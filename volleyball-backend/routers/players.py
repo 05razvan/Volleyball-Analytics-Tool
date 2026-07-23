@@ -8,8 +8,11 @@ from typing import List
 router = APIRouter(prefix="/players", tags=["players"])
 
 @router.get("/", response_model=List[PlayerResponse])
-def get_players(db: Session = Depends(get_db)):
-    return db.query(Player).all()
+def get_players(team_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(Player)
+    if team_id:
+        query = query.filter(Player.team_id == team_id)
+    return query.all()
 
 @router.get("/{player_id}", response_model=PlayerResponse)
 def get_player(player_id: int, db: Session = Depends(get_db)):

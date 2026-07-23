@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class TeamCreate(BaseModel):
@@ -12,31 +12,30 @@ class TeamResponse(BaseModel):
     name: str
     division: str
     coach_name: str
-
     class Config:
         from_attributes = True
 
 class PlayerCreate(BaseModel):
     name: str
-    jersey_number: int
-    position: str
-    team_id: int
+    jersey_number: Optional[int] = None
+    position: Optional[str] = None
+    team_id: Optional[int] = None
     is_recreational: bool = False
 
 class PlayerResponse(BaseModel):
     id: int
     name: str
-    jersey_number: int
-    position: str
-    team_id: int
+    jersey_number: Optional[int]
+    position: Optional[str]
+    team_id: Optional[int]
     is_recreational: bool
-
     class Config:
         from_attributes = True
 
 class MatchCreate(BaseModel):
     home_team_id: int
     away_team_id: int
+    our_team_id: int
     date: datetime
     location: str
 
@@ -44,27 +43,34 @@ class MatchResponse(BaseModel):
     id: int
     home_team_id: int
     away_team_id: int
+    our_team_id: int
     date: datetime
     location: str
-    home_score: Optional[int]
-    away_score: Optional[int]
-
+    status: str
+    current_set: int
     class Config:
         from_attributes = True
 
-class MatchStatsCreate(BaseModel):
+class MatchEventCreate(BaseModel):
     match_id: int
-    player_id: int
-    kills: int = 0
-    errors: int = 0
-    blocks: int = 0
-    aces: int = 0
-    digs: int = 0
-    assists: int = 0
+    player_id: Optional[int] = None
+    event_type: str
+    set_number: int
 
-class MatchStatsResponse(MatchStatsCreate):
+class MatchEventResponse(BaseModel):
     id: int
+    match_id: int
+    player_id: Optional[int]
+    event_type: str
+    set_number: int
+    timestamp: datetime
+    class Config:
+        from_attributes = True
 
+class SetScoreResponse(BaseModel):
+    set_number: int
+    our_score: int
+    opponent_score: int
     class Config:
         from_attributes = True
 
@@ -76,6 +82,5 @@ class AvailabilityCreate(BaseModel):
 
 class AvailabilityResponse(AvailabilityCreate):
     id: int
-
     class Config:
         from_attributes = True
