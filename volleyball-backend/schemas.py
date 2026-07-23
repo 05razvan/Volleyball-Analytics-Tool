@@ -5,13 +5,11 @@ from datetime import datetime
 class TeamCreate(BaseModel):
     name: str
     division: str
-    coach_name: str
 
 class TeamResponse(BaseModel):
     id: int
     name: str
     division: str
-    coach_name: str
     class Config:
         from_attributes = True
 
@@ -29,6 +27,7 @@ class PlayerResponse(BaseModel):
     position: Optional[str]
     team_id: Optional[int]
     is_recreational: bool
+    is_private: bool = False
     class Config:
         from_attributes = True
 
@@ -37,7 +36,7 @@ class MatchCreate(BaseModel):
     away_team_id: int
     our_team_id: int
     date: datetime
-    location: str
+    location: Optional[str] = None
 
 class MatchResponse(BaseModel):
     id: int
@@ -45,7 +44,7 @@ class MatchResponse(BaseModel):
     away_team_id: int
     our_team_id: int
     date: datetime
-    location: str
+    location: Optional[str]
     status: str
     current_set: int
     class Config:

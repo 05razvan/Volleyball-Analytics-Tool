@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -11,14 +11,30 @@ DIVISIONS = [
 
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
 
-EVENT_TYPES = ["kill", "spike", "dig", "block", "ace", "serve_error", "assist", "opponent_point"]
+EVENT_TYPES = ["kill", "spike", "dig", "block", "ace", "serve_error",
+               "assist", "opponent_point", "our_point"]
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(String, nullable=False, unique=True)
+    hashed_password = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    role = Column(String, default="player")  # "player", "captain", "coach", "admin"
+    created_at = Column(DateTime, default=datetime.utcnow)
+    player = relationship("Player", back_populates="user", uselist=False)
+
 class Team(Base):
     __tablename__ = "teams"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     division = Column(String, nullable=False)
-    coach_name = Column(String)
-    players = relationship("Player", back_populates="team")
+    head_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assistant_coach_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    players = relationship("Player", back_populates="team",
+                          foreign_keys="Player.team_id")
+    head_coach = relationship("User", foreign_keys=[head_coach_id])
+    assistant_coach = relationship("User", foreign_keys=[assistant_coach_id])
 
 class Player(Base):
     __tablename__ = "players"
@@ -29,17 +45,9 @@ class Player(Base):
     jersey_number = Column(Integer, nullable=True)
     position = Column(String, nullable=True)
     is_recreational = Column(Boolean, default=False)
-    team = relationship("Team", back_populates="players")
-    user = relationship("User", back_populates="player")
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    email = Column(String, nullable=False, unique=True)
-    hashed_password = Column(String, nullable=False)
-    role = Column(String, default="player")  # "player" or "coach"
-    created_at = Column(DateTime, default=datetime.utcnow)
-    player = relationship("Player", back_populates="user", uselist=False)
+    is_private = Column(Boolean, default=False)
+    team = relationship("Team", back_populates="players", foreign_keys=[team_id])
+    user = relationship("User", back_populates="player", foreign_keys=[user_id])
 
 class TeamJoinRequest(Base):
     __tablename__ = "team_join_requests"
@@ -48,6 +56,8 @@ class TeamJoinRequest(Base):
     team_id = Column(Integer, ForeignKey("teams.id"))
     status = Column(String, default="pending")  # "pending", "approved", "rejected"
     created_at = Column(DateTime, default=datetime.utcnow)
+    user = relationship("User")
+    team = relationship("Team")
 
 class Match(Base):
     __tablename__ = "matches"
@@ -56,7 +66,7 @@ class Match(Base):
     away_team_id = Column(Integer, ForeignKey("teams.id"))
     date = Column(DateTime)
     location = Column(String)
-    status = Column(String, default="scheduled")  # "scheduled", "live", "completed"
+    status = Column(String, default="scheduled")
     our_team_id = Column(Integer, ForeignKey("teams.id"))
     current_set = Column(Integer, default=1)
     events = relationship("MatchEvent", back_populates="match")

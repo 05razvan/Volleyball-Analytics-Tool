@@ -42,9 +42,9 @@ function LiveMatch() {
   const teamName = (id) => teams.find(t => t.id === id)?.name ?? '...';
 
   const handleEvent = async (eventType) => {
-    if (!selectedPlayer && eventType !== 'opponent_point') {
-      alert('Select a player first');
-      return;
+    if (!selectedPlayer && eventType !== 'opponent_point' && eventType !== 'our_point') {
+        alert('Select a player first');
+        return;
     }
     const event = {
       match_id: parseInt(matchId),
@@ -99,16 +99,22 @@ function LiveMatch() {
         </div>
 
         <div style={styles.scoreMid}>
-          <div style={styles.setLabel}>Set {score.current_set}</div>
-          {(score.sets || []).map(s => (
-            <div key={s.set} style={styles.setPill}>
-              S{s.set}: {s.us}–{s.them}
+            <div style={styles.setLabel}>Set {score.current_set}</div>
+            {(score.sets || []).map(s => (
+                <div key={s.set} style={styles.setPill}>
+                    S{s.set}: {s.us}–{s.them}
+                </div>
+            ))}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button style={styles.ourBtn}
+                    onClick={() => handleEvent('our_point')}>
+                    +  {ourTeamName} point
+                </button>
+                <button style={styles.opponentBtn}
+                    onClick={() => handleEvent('opponent_point')}>
+                    + {opponentName} point
+                </button>
             </div>
-          ))}
-          <button style={styles.opponentBtn}
-            onClick={() => handleEvent('opponent_point')}>
-            + {opponentName} point
-          </button>
         </div>
 
         <div style={styles.scoreBlock}>
@@ -264,6 +270,11 @@ const styles = {
   lastEvent: {
     fontSize: '13px', color: '#aaa', padding: '10px 14px',
     background: '#1a1a2e', borderRadius: '8px', display: 'inline-block',
+  },
+  ourBtn: {
+  padding: '8px 16px', background: '#1a5e38',
+  color: 'white', border: 'none', borderRadius: '8px',
+  cursor: 'pointer', fontSize: '13px', fontWeight: '600',
   },
 };
 

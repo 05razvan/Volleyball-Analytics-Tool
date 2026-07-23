@@ -86,6 +86,11 @@ function Matches() {
         </div>
       </div>
       <div style={styles.matchRight}>
+        <button
+            style={styles.spectateBtn}
+            onClick={(e) => { e.stopPropagation(); window.open(`/spectator/${match.id}`, '_blank'); }}>
+            👁👁 Watch
+        </button>
         {match.status === 'live' && <span style={styles.liveBadge}>● LIVE</span>}
         {match.status === 'completed' && <span style={styles.doneBadge}>Completed</span>}
         {match.status === 'scheduled' && (
@@ -164,34 +169,38 @@ function Matches() {
 }
 
 const styles = {
-  heading: { marginBottom: '24px', fontSize: '24px' },
-  subheading: { marginBottom: '12px', fontSize: '16px', fontWeight: '500' },
-  card: { background: '#f8f8f8', padding: '20px', borderRadius: '8px', marginBottom: '24px' },
+  heading: { marginBottom: '24px', fontSize: '24px', color: '#f0f0f0' },
+  subheading: { marginBottom: '12px', fontSize: '16px', fontWeight: '500', color: '#ccc' },
+  card: { background: '#1e1e1e', padding: '20px', borderRadius: '10px',
+    marginBottom: '24px', border: '1px solid #2a2a2a' },
   formRow: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
-  input: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #ddd',
-    fontSize: '14px', flex: '1', minWidth: '150px' },
-  button: { padding: '8px 20px', background: '#1a1a2e', color: 'white',
-    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' },
-  error: { color: 'red', marginTop: '8px', fontSize: '14px' },
+  input: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #333',
+    fontSize: '14px', flex: '1', minWidth: '150px', background: '#2a2a2a', color: '#f0f0f0' },
+  button: { padding: '8px 20px', background: '#F5C800', color: '#111',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
+  error: { color: '#ff6b6b', marginTop: '8px', fontSize: '14px' },
   filterRow: { display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' },
-  filterBtn: { padding: '6px 14px', borderRadius: '20px', border: '1px solid #ddd',
-    background: 'white', cursor: 'pointer', fontSize: '12px' },
-  filterActive: { background: '#1a1a2e', color: 'white', border: '1px solid #1a1a2e' },
-  sectionHeading: { fontSize: '13px', fontWeight: '600', color: '#666',
+  filterBtn: { padding: '6px 14px', borderRadius: '20px', border: '1px solid #333',
+    background: '#1a1a1a', cursor: 'pointer', fontSize: '12px', color: '#ccc' },
+  filterActive: { background: '#F5C800', color: '#111', border: '1px solid #F5C800', fontWeight: '600' },
+  sectionHeading: { fontSize: '13px', fontWeight: '600', color: '#F5C800',
     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' },
   matchCard: { display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '14px 18px', background: 'white', borderRadius: '8px',
-    border: '1px solid #eee', boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    marginBottom: '8px', cursor: 'pointer' },
+    padding: '14px 18px', background: '#1a1a1a', borderRadius: '8px',
+    border: '1px solid #2a2a2a', marginBottom: '8px', cursor: 'pointer' },
   matchMain: { flex: 1 },
   matchRight: { display: 'flex', alignItems: 'center', gap: '10px' },
-  vs: { color: '#aaa' },
+  vs: { color: '#555' },
   meta: { color: '#888', fontSize: '13px', marginTop: '4px' },
-  liveBadge: { color: '#e74c3c', fontWeight: '700', fontSize: '13px' },
-  doneBadge: { color: '#888', fontSize: '13px' },
-  startBtn: { padding: '6px 14px', background: '#2ecc71', color: 'white',
+  liveBadge: { color: '#ff6b6b', fontWeight: '700', fontSize: '13px' },
+  doneBadge: { color: '#555', fontSize: '13px' },
+  startBtn: { padding: '6px 14px', background: '#F5C800', color: '#111',
     border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
-  empty: { color: '#aaa', fontSize: '14px' },
+  empty: { color: '#555', fontSize: '14px' },
+  spectateBtn: {
+  padding: '5px 12px', background: 'transparent', color: '#888',
+  border: '1px solid #333', borderRadius: '6px',
+  cursor: 'pointer', fontSize: '12px', },
 };
 
 export default Matches;
