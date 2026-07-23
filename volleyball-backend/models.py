@@ -11,8 +11,7 @@ DIVISIONS = [
 
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
 
-EVENT_TYPES = ["kill", "error", "dig", "block", "ace", "serve_error", "assist", "opponent_point"]
-
+EVENT_TYPES = ["kill", "spike", "dig", "block", "ace", "serve_error", "assist", "opponent_point"]
 class Team(Base):
     __tablename__ = "teams"
     id = Column(Integer, primary_key=True)

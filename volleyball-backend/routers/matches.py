@@ -7,8 +7,8 @@ from typing import List
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
-POINTS_FOR_US = {"kill", "ace", "opponent_point"}
-POINTS_FOR_THEM = {"serve_error"}
+POINTS_FOR_US = {"kill", "ace"}
+POINTS_FOR_THEM = {"serve_error", "opponent_point"}
 
 @router.get("/", response_model=List[MatchResponse])
 def get_matches(db: Session = Depends(get_db)):

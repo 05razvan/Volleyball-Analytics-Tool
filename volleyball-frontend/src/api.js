@@ -21,3 +21,6 @@ export const getEvents = (matchId) => api.get(`/matches/${matchId}/events`);
 
 export const getAvailability = (matchId) => api.get(`/availability/${matchId}`);
 export const setAvailability = (data) => api.post('/availability/', data);
+export const getTeamAnalytics = (teamId) => api.get(`/analytics/team/${teamId}`);
+export const getPlayerAnalytics = (playerId) => api.get(`/analytics/player/${playerId}`);
+export const getTeamTrend = (teamId) => api.get(`/analytics/team/${teamId}/trend`);
