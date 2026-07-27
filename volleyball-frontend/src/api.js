@@ -49,3 +49,4 @@ export const getTopPerformers = (teamId) => api.get(`/analytics/team/${teamId}/t
 export const getMatchCount = (teamId) => api.get(`/analytics/team/${teamId}/match-count`);
 export const updatePrivacy = (playerId, isPrivate) => api.patch(`/players/${playerId}/privacy`, { is_private: isPrivate });
 export const leaveTeam = () => api.post('/join-requests/leave');
+export const createAccount = (data) => api.post('/auth/create-account', data);
