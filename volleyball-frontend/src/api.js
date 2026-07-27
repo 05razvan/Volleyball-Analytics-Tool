@@ -50,3 +50,6 @@ export const getMatchCount = (teamId) => api.get(`/analytics/team/${teamId}/matc
 export const updatePrivacy = (playerId, isPrivate) => api.patch(`/players/${playerId}/privacy`, { is_private: isPrivate });
 export const leaveTeam = () => api.post('/join-requests/leave');
 export const createAccount = (data) => api.post('/auth/create-account', data);
+export const getMatchTopPerformers = (matchId) => api.get(`/analytics/match/${matchId}/top`);
+export const saveLineup = (matchId, data) => api.post(`/matches/${matchId}/lineup`, data);
+export const getLineup = (matchId) => api.get(`/matches/${matchId}/lineup`);

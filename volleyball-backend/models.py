@@ -98,3 +98,11 @@ class Availability(Base):
     match_id = Column(Integer, ForeignKey("matches.id"))
     status = Column(String)
     note = Column(String, nullable=True)
+
+class MatchLineup(Base):
+    __tablename__ = "match_lineups"
+    id = Column(Integer, primary_key=True)
+    match_id = Column(Integer, ForeignKey("matches.id"))
+    player_id = Column(Integer, ForeignKey("players.id"))
+    is_on_court = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

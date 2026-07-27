@@ -157,3 +157,58 @@ def get_events(match_id: int, db: Session = Depends(get_db)):
     return db.query(MatchEvent).filter(
         MatchEvent.match_id == match_id
     ).order_by(MatchEvent.timestamp).all()
+
+from models import Match, MatchEvent, SetScore, Team, Player, MatchLineup
+from datetime import datetime
+
+@router.post("/{match_id}/lineup")
+def set_lineup(match_id: int, data: dict,
+               db: Session = Depends(get_db),
+               current_user=Depends(get_current_user)):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    check_match_permission(match, current_user, db)
+
+    # clear existing lineup
+    db.query(MatchLineup).filter(
+        MatchLineup.match_id == match_id).delete()
+
+    on_court = data.get("on_court", [])
+    bench = data.get("bench", [])
+
+    for pid in on_court:
+        db.add(MatchLineup(
+            match_id=match_id, player_id=pid,
+            is_on_court=True,
+            updated_at=datetime.utcnow()
+        ))
+    for pid in bench:
+        db.add(MatchLineup(
+            match_id=match_id, player_id=pid,
+            is_on_court=False,
+            updated_at=datetime.utcnow()
+        ))
+    db.commit()
+    return {"message": "Lineup saved"}
+
+@router.get("/{match_id}/lineup")
+def get_lineup(match_id: int, db: Session = Depends(get_db)):
+    lineups = db.query(MatchLineup).filter(
+        MatchLineup.match_id == match_id).all()
+    result = {"on_court": [], "bench": []}
+    for l in lineups:
+        player = db.query(Player).filter(Player.id == l.player_id).first()
+        if not player:
+            continue
+        entry = {
+            "id": player.id,
+            "name": player.name,
+            "jersey_number": player.jersey_number,
+            "position": player.position,
+        }
+        if l.is_on_court:
+            result["on_court"].append(entry)
+        else:
+            result["bench"].append(entry)
+    return result

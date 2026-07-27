@@ -180,3 +180,43 @@ def team_match_count(team_id: int, db: Session = Depends(get_db)):
         Match.status == "completed"
     ).count()
     return {"count": count}
+
+@router.get("/match/{match_id}/top")
+def match_top_performers(match_id: int, db: Session = Depends(get_db)):
+    events = db.query(MatchEvent).filter(
+        MatchEvent.match_id == match_id,
+        MatchEvent.player_id.isnot(None)
+    ).all()
+
+    if not events:
+        return {}
+
+    player_ids = list(set(e.player_id for e in events))
+    stats = {}
+    for pid in player_ids:
+        p = db.query(Player).filter(Player.id == pid).first()
+        if not p:
+            continue
+        p_events = [e for e in events if e.player_id == pid]
+        kills = sum(1 for e in p_events if e.event_type == "kill")
+        blocks = sum(1 for e in p_events if e.event_type == "block")
+        aces = sum(1 for e in p_events if e.event_type == "ace")
+        digs = sum(1 for e in p_events if e.event_type == "dig")
+        stats[pid] = {
+            "name": p.name,
+            "kills": kills,
+            "blocks": blocks,
+            "aces": aces,
+            "digs": digs,
+        }
+
+    def top(stat):
+        ranked = sorted(stats.values(), key=lambda x: x[stat], reverse=True)
+        return ranked[0] if ranked and ranked[0][stat] > 0 else None
+
+    return {
+        "most_kills": top("kills"),
+        "most_blocks": top("blocks"),
+        "most_aces": top("aces"),
+        "most_digs": top("digs"),
+    }

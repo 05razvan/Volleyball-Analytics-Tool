@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getScore, logEvent, undoEvent, endSet,
-         completeMatch, getPlayersByTeam, getMatches, getTeams } from '../api';
+         completeMatch, getPlayersByTeam, getMatches,
+         getTeams, saveLineup } from '../api';
 
 const EVENTS = [
   { type: 'kill',        label: 'Kill',        color: '#27ae60', points: 'us'   },
@@ -66,11 +67,15 @@ function LiveMatch() {
     }
   };
 
-  const handleStartTracking = () => {
+  const handleStartTracking = async () => {
     if (onCourt.length === 0) {
       alert('Select at least 1 player to start.');
       return;
     }
+    await saveLineup(matchId, {
+      on_court: onCourt.map(p => p.id),
+      bench: bench.map(p => p.id),
+    });
     setPhase('tracking');
   };
 
@@ -120,14 +125,20 @@ function LiveMatch() {
     setSelectedPlayer(null);
   };
 
-  const handleSubIn = (benchPlayer) => {
+  const handleSubIn = async (benchPlayer) => {
     if (!subTarget) return;
-    setOnCourt(onCourt.map(p =>
-      p.id === subTarget.id ? benchPlayer : p));
-    setBench(prev => [...prev.filter(p => p.id !== benchPlayer.id), subTarget]
-      .sort((a, b) => a.name.localeCompare(b.name)));
+    const newCourt = onCourt.map(p =>
+      p.id === subTarget.id ? benchPlayer : p);
+    const newBench = [...bench.filter(p => p.id !== benchPlayer.id), subTarget]
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setOnCourt(newCourt);
+    setBench(newBench);
     setSubMode(false);
     setSubTarget(null);
+    await saveLineup(matchId, {
+      on_court: newCourt.map(p => p.id),
+      bench: newBench.map(p => p.id),
+    });
   };
 
   const cancelSub = () => {
