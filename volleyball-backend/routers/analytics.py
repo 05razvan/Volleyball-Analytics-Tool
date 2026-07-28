@@ -27,9 +27,11 @@ def get_player_stats(player_id: int, db: Session,
     blocks = sum(1 for e in events if e.event_type == "block")
     digs = sum(1 for e in events if e.event_type == "dig")
     assists = sum(1 for e in events if e.event_type == "assist")
+    serves = sum(1 for e in events if e.event_type == "serve")
+
 
     total_attacks = kills + spikes + errors
-    total_serves = aces + serve_errors
+    total_serves = aces + serve_errors + serves
 
     return {
         "player_id": player_id,

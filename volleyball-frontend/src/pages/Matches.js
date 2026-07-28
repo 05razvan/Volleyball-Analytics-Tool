@@ -161,7 +161,7 @@ function Matches() {
                 e.stopPropagation();
                 window.open(`/spectator/${match.id}`, '_blank');
               }}>
-              👁 Watch
+              👁👁 Watch
             </button>
           </div>
         </div>
