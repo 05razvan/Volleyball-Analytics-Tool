@@ -48,8 +48,8 @@ function rotateClockwise(positions) {
 function LiveMatch() {
   const { matchId } = useParams();
   const navigate = useNavigate();
-  const [allPlayers, setAllPlayers] = useState([]);
-  const [match, setMatch] = useState(null);
+  // eslint-disable-next-line no-unused-vars
+  const [allPlayers, setAllPlayers] = useState([]);  const [match, setMatch] = useState(null);
   const [phase, setPhase] = useState('lineup');
   const [teams, setTeams] = useState([]);
   const [score, setScore] = useState(null);
