@@ -66,6 +66,7 @@ function SpectatorView() {
     fetchAll();
     const interval = setInterval(fetchAll, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
   if (error) return (

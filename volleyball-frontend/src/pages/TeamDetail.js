@@ -12,7 +12,6 @@ function TeamDetail() {
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [playerStats, setPlayerStats] = useState(null);
-  const role = getRole();
 
   useEffect(() => {
     fetch(`${api_base}/teams/${teamId}`)

@@ -44,16 +44,12 @@ function rotateClockwise(positions) {
   ];
 }
 
-const BACK_ROW_INDICES = [0, 4, 5];  // P1, P5, P6
-const FRONT_ROW_INDICES = [1, 2, 3]; // P2, P3, P4
 
 function LiveMatch() {
   const { matchId } = useParams();
   const navigate = useNavigate();
 
   const [phase, setPhase] = useState('lineup');
-  const [allPlayers, setAllPlayers] = useState([]);
-  const [match, setMatch] = useState(null);
   const [teams, setTeams] = useState([]);
   const [score, setScore] = useState(null);
 
@@ -86,7 +82,6 @@ function LiveMatch() {
       if (m) {
         getPlayersByTeam(m.our_team_id).then(res => {
           const players = res.data;
-          setAllPlayers(players);
           setBench(players);
           setLiberos(players.filter(p => p.position === 'Libero'));
         });
@@ -135,7 +130,6 @@ function LiveMatch() {
   };
 
   const isMiddle = (player) => player?.position === 'Middle Blocker';
-  const isLiberoPlayer = (player) => player?.position === 'Libero';
 
   const checkLiberoSwapOut = (newPositions, swap) => {
     if (!swap) return { positions: newPositions };
