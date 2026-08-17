@@ -48,7 +48,8 @@ function rotateClockwise(positions) {
 function LiveMatch() {
   const { matchId } = useParams();
   const navigate = useNavigate();
-
+  const [allPlayers, setAllPlayers] = useState([]);
+  const [match, setMatch] = useState(null);
   const [phase, setPhase] = useState('lineup');
   const [teams, setTeams] = useState([]);
   const [score, setScore] = useState(null);
@@ -82,6 +83,7 @@ function LiveMatch() {
       if (m) {
         getPlayersByTeam(m.our_team_id).then(res => {
           const players = res.data;
+          setAllPlayers(players);
           setBench(players);
           setLiberos(players.filter(p => p.position === 'Libero'));
         });
