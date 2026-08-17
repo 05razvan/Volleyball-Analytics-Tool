@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
-const api_base = 'http://localhost:8000';
+const api_base = 'volleyball-analytics-tool-production.up.railway.app';
 
 const EVENT_LABELS = {
   kill:           { label: 'Kill',         emoji: '⚡', color: '#2ecc71', point: 'us'   },
