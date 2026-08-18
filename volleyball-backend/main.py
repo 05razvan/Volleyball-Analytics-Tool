@@ -22,6 +22,10 @@ def seed_admin():
             db.add(admin)
             db.commit()
             print("Admin created: admin@volleyball.app / admin1234")
+        else:
+            print("✓ Admin account already exists")
+    except Exception as e:
+        print(f"Admin seed error: {e}")
     finally:
         db.close()
 
