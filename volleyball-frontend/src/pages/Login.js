@@ -17,16 +17,21 @@ function Login({ onLogin }) {
     }
     setLoading(true);
     try {
+      console.log('Attempting login...');
       const res = await login({ email: form.email, password: form.password });
+      console.log('Response:', res.data);
       const { access_token, role, user_id, name } = res.data;
       setAuthToken(access_token);
       localStorage.setItem('role', role);
       localStorage.setItem('user_id', user_id);
       localStorage.setItem('email', form.email);
       localStorage.setItem('name', name);
+      console.log('Calling onLogin...');
       onLogin();
+      console.log('Navigating...');
       navigate('/teams');
     } catch (err) {
+      console.error('Login error:', err);
       setError(err.response?.data?.detail || 'Incorrect email or password.');
     } finally {
       setLoading(false);
