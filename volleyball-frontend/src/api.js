@@ -5,7 +5,7 @@ if (token) {
   axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 }
 
-const api = axios.create({ baseURL: 'volleyball-analytics-tool-production.up.railway.app' });
+const api = axios.create({ baseURL: 'https://volleyball-analytics-tool-production.up.railway.app' });
 
 export const getTeams = () => api.get('/teams/');
 export const createTeam = (data) => api.post('/teams/', data);
