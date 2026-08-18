@@ -30,15 +30,6 @@ function Profile() {
     load();
   }, []);
 
-  const handlePrivacyToggle = async () => {
-    const newVal = !isPrivate;
-    setIsPrivate(newVal);
-    try {
-      await updatePrivacy(me.user_id, newVal);
-    } catch {
-      setIsPrivate(!newVal);
-    }
-  };
 
   const handleLeaveTeam = async () => {
     if (!window.confirm('Are you sure you want to leave your team?')) return;
