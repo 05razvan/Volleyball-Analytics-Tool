@@ -34,8 +34,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://volleyball-analytics-tool-7wdj.vercel.app",
-        "http://localhost:3000",
+        "https://guvc-analytics.vercel.app"
     ],
     allow_methods=["*"],
     allow_headers=["*"],
