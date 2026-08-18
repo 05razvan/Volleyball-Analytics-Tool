@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayerAnalytics } from '../api';
 
-const api_base = 'volleyball-analytics-tool-production.up.railway.app';
+const api_base = 'https://volleyball-analytics-tool-production.up.railway.app';
 
 function TeamDetail() {
   const { teamId } = useParams();
