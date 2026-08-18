@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getMe, getPlayerAnalytics, getPlayerMatchHistory, updatePrivacy, leaveTeam } from '../api';
+import { getMe, getPlayerAnalytics, getPlayerMatchHistory, leaveTeam } from '../api';
 
 function Profile() {
   const [me, setMe] = useState(null);
