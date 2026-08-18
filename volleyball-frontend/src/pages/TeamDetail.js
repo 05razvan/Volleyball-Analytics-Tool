@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayerAnalytics } from '../api';
-import { getRole } from '../auth';
 
 const api_base = 'volleyball-analytics-tool-production.up.railway.app';
 
