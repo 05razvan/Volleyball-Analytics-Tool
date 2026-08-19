@@ -28,34 +28,34 @@ function Nav({ loggedIn, onLogout }) {
   const location = useLocation();
   const role = getRole();
   const name = localStorage.getItem('name') || '';
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  if (location.pathname === '/login' || location.pathname === '/') return null;
 
   const pageName = Object.entries(PAGE_NAMES).find(
     ([path]) => location.pathname.startsWith(path)
   )?.[1] ?? '';
 
-  if (location.pathname === '/login' || location.pathname === '/') return null;
+  const navLinks = [
+    { to: '/teams', label: 'Teams' },
+    { to: '/players', label: 'Players' },
+    { to: '/matches', label: 'Matches' },
+    { to: '/analytics', label: 'Analytics' },
+  ];
 
   return (
     <nav style={styles.nav}>
       <span style={styles.pageTitle}>{pageName}</span>
-      <div style={styles.navLinks}>
-        <Link to="/teams" style={{
-          ...styles.link,
-          ...(location.pathname.startsWith('/teams') ? styles.linkActive : {})
-        }}>Teams</Link>
-        <Link to="/players" style={{
-          ...styles.link,
-          ...(location.pathname === '/players' ? styles.linkActive : {})
-        }}>Players</Link>
-        <Link to="/matches" style={{
-          ...styles.link,
-          ...(location.pathname === '/matches' ? styles.linkActive : {})
-        }}>Matches</Link>
-        <Link to="/analytics" style={{
-          ...styles.link,
-          ...(location.pathname === '/analytics' ? styles.linkActive : {})
-        }}>Analytics</Link>
+
+      <div className="desktop-nav" style={styles.navLinks}>
+        {navLinks.map(l => (
+          <Link key={l.to} to={l.to} style={{
+            ...styles.link,
+            ...(location.pathname.startsWith(l.to) ? styles.linkActive : {})
+          }}>{l.label}</Link>
+        ))}
       </div>
+
       <div style={styles.navRight}>
         {loggedIn ? (
           <>
@@ -73,6 +73,47 @@ function Nav({ loggedIn, onLogout }) {
           <Link to="/login" style={styles.loginLink}>Sign in</Link>
         )}
       </div>
+
+      <button
+        className="hamburger-btn"
+        style={styles.hamburger}
+        onClick={() => setMenuOpen(!menuOpen)}>
+        {menuOpen ? '✕' : '☰'}
+      </button>
+
+      {menuOpen && (
+        <div style={styles.mobileMenu}>
+          {navLinks.map(l => (
+            <Link key={l.to} to={l.to}
+              style={{
+                ...styles.mobileLink,
+                ...(location.pathname.startsWith(l.to) ? styles.mobileLinkActive : {})
+              }}
+              onClick={() => setMenuOpen(false)}>
+              {l.label}
+            </Link>
+          ))}
+          {loggedIn ? (
+            <>
+              {role === 'admin' && (
+                <Link to="/admin" style={styles.mobileLink}
+                  onClick={() => setMenuOpen(false)}>Admin</Link>
+              )}
+              <Link to="/profile" style={styles.mobileLink}
+                onClick={() => setMenuOpen(false)}>
+                Profile ({name})
+              </Link>
+              <button style={styles.mobileSignOut} onClick={() => {
+                onLogout();
+                setMenuOpen(false);
+              }}>Sign out</button>
+            </>
+          ) : (
+            <Link to="/login" style={styles.mobileLink}
+              onClick={() => setMenuOpen(false)}>Sign in</Link>
+          )}
+        </div>
+      )}
     </nav>
   );
 }
@@ -98,6 +139,11 @@ function AppInner() {
           color: #f0f0f0; min-height: 100vh; }
         a { text-decoration: none; }
         input, select, button, textarea { font-family: 'Inter', sans-serif; }
+        .hamburger-btn { display: none !important; }
+        @media (max-width: 600px) {
+          .desktop-nav { display: none !important; }
+          .hamburger-btn { display: flex !important; }
+        }
       `}</style>
       <Nav loggedIn={loggedIn} onLogout={handleLogout} />
       <div style={styles.container}>
@@ -136,42 +182,65 @@ function App() {
 const styles = {
   nav: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 32px', height: '58px', background: '#F5C800',
+    padding: '0 20px', height: '58px', background: '#F5C800',
     width: '100%', position: 'sticky', top: 0, zIndex: 100,
+    flexWrap: 'nowrap', position: 'relative',
   },
   pageTitle: {
-    fontWeight: '700', fontSize: '17px', color: '#111', minWidth: '120px',
+    fontWeight: '700', fontSize: '16px', color: '#111', flexShrink: 0,
   },
-  navLinks: { display: 'flex', gap: '4px', alignItems: 'center' },
+  navLinks: {
+    display: 'flex', gap: '2px', alignItems: 'center',
+  },
   link: {
     color: '#111', fontSize: '14px', fontWeight: '500',
-    padding: '6px 12px', borderRadius: '6px',
+    padding: '6px 10px', borderRadius: '6px', whiteSpace: 'nowrap',
   },
   linkActive: { background: 'rgba(0,0,0,0.12)', fontWeight: '600' },
   navRight: {
-    display: 'flex', alignItems: 'center', gap: '12px',
-    minWidth: '140px', justifyContent: 'flex-end',
+    display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0,
   },
   avatar: {
-    width: '34px', height: '34px', borderRadius: '50%', background: '#111',
-    color: '#F5C800', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', fontWeight: '700', fontSize: '15px',
-    cursor: 'pointer', flexShrink: 0,
+    width: '32px', height: '32px', borderRadius: '50%', background: '#111',
+    color: '#F5C800', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontWeight: '700', fontSize: '14px', cursor: 'pointer', flexShrink: 0,
   },
   logoutBtn: {
-    padding: '6px 12px', background: 'transparent', color: '#111',
+    padding: '5px 10px', background: 'transparent', color: '#111',
     border: '1.5px solid rgba(0,0,0,0.25)', borderRadius: '6px',
-    cursor: 'pointer', fontSize: '13px', fontWeight: '500',
+    cursor: 'pointer', fontSize: '12px', fontWeight: '500', whiteSpace: 'nowrap',
   },
   loginLink: {
-    padding: '6px 16px', background: '#111', color: '#F5C800',
-    borderRadius: '6px', fontSize: '14px', fontWeight: '600',
-  },
-  adminLink: {
-    padding: '6px 12px', background: 'rgba(0,0,0,0.15)', color: '#111',
+    padding: '6px 14px', background: '#111', color: '#F5C800',
     borderRadius: '6px', fontSize: '13px', fontWeight: '600',
   },
-  container: { padding: '32px', maxWidth: '1100px', margin: '0 auto' },
+  adminLink: {
+    padding: '5px 10px', background: 'rgba(0,0,0,0.15)', color: '#111',
+    borderRadius: '6px', fontSize: '12px', fontWeight: '600',
+  },
+  hamburger: {
+    background: 'none', border: 'none', fontSize: '20px',
+    cursor: 'pointer', color: '#111', padding: '4px 8px', flexShrink: 0,
+  },
+  mobileMenu: {
+    position: 'absolute', top: '58px', left: 0, right: 0,
+    background: '#F5C800', zIndex: 99, display: 'flex',
+    flexDirection: 'column', borderTop: '1px solid rgba(0,0,0,0.1)',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+  },
+  mobileLink: {
+    display: 'block', padding: '14px 24px', color: '#111',
+    fontSize: '15px', fontWeight: '500',
+    borderBottom: '1px solid rgba(0,0,0,0.08)',
+  },
+  mobileLinkActive: { fontWeight: '700', background: 'rgba(0,0,0,0.08)' },
+  mobileSignOut: {
+    display: 'block', width: '100%', padding: '14px 24px',
+    background: 'none', border: 'none', color: '#111',
+    fontSize: '15px', fontWeight: '500', textAlign: 'left',
+    cursor: 'pointer', borderTop: '1px solid rgba(0,0,0,0.08)',
+  },
+  container: { padding: '20px', maxWidth: '1100px', margin: '0 auto' },
 };
 
 export default App;
