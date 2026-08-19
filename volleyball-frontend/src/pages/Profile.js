@@ -5,7 +5,6 @@ function Profile() {
   const [me, setMe] = useState(null);
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
-  const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [leaveMsg, setLeaveMsg] = useState('');
 
@@ -18,7 +17,6 @@ function Profile() {
           try {
             const statsRes = await getPlayerAnalytics(meRes.data.user_id);
             setStats(statsRes.data);
-            setIsPrivate(statsRes.data.is_private ?? false);
             const histRes = await getPlayerMatchHistory(meRes.data.user_id);
             setHistory(histRes.data);
           } catch { }
@@ -29,7 +27,6 @@ function Profile() {
     };
     load();
   }, []);
-
 
   const handleLeaveTeam = async () => {
     if (!window.confirm('Are you sure you want to leave your team?')) return;
@@ -70,19 +67,6 @@ function Profile() {
 
         {!isCoach && me?.team_name && (
           <div style={styles.actions}>
-            <div style={styles.privacyRow}>
-              <div>
-                <div style={styles.privacyLabel}>Private profile</div>
-                <div style={styles.privacyHint}>
-                  Hide your stats from other users
-                </div>
-              </div>
-              <button
-                style={{ ...styles.toggle, ...(isPrivate ? styles.toggleOn : {}) }}
-                onClick={handlePrivacyToggle}>
-                {isPrivate ? 'On' : 'Off'}
-              </button>
-            </div>
             <button style={styles.leaveBtn} onClick={handleLeaveTeam}>
               Leave team
             </button>
@@ -192,18 +176,6 @@ const styles = {
   },
   noTeam: { color: '#555', fontSize: '13px' },
   actions: { borderTop: '1px solid #2a2a2a', paddingTop: '16px' },
-  privacyRow: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: '14px',
-  },
-  privacyLabel: { fontSize: '14px', color: '#f0f0f0', marginBottom: '2px' },
-  privacyHint: { fontSize: '12px', color: '#888' },
-  toggle: {
-    padding: '6px 16px', background: '#2a2a2a', color: '#888',
-    border: '1px solid #333', borderRadius: '20px', cursor: 'pointer',
-    fontSize: '13px', fontWeight: '600', minWidth: '52px',
-  },
-  toggleOn: { background: '#F5C800', color: '#111', border: '1px solid #F5C800' },
   leaveBtn: {
     padding: '8px 16px', background: 'transparent', color: '#e74c3c',
     border: '1px solid #e74c3c', borderRadius: '6px', cursor: 'pointer',
