@@ -184,7 +184,7 @@ const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '0 20px', height: '58px', background: '#F5C800',
     width: '100%', position: 'sticky', top: 0, zIndex: 100,
-    flexWrap: 'nowrap', position: 'relative',
+    flexWrap: 'nowrap',
   },
   pageTitle: {
     fontWeight: '700', fontSize: '16px', color: '#111', flexShrink: 0,
