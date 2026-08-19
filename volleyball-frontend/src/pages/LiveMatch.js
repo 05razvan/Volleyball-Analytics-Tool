@@ -588,9 +588,9 @@ function LiveMatch() {
         </div>
       )}
 
-      <div style={styles.body}>
+      <div className="tracker-body" style={styles.body}>
         {/* Player panel */}
-        <div style={styles.playerPanel}>
+        <div className="tracker-player-panel" style={styles.playerPanel}>
 
           {/* Mini rotation display */}
           <div style={styles.rotationMini}>
@@ -692,7 +692,7 @@ function LiveMatch() {
         </div>
 
         {/* Event panel */}
-        <div style={styles.eventPanel}>
+        <div className="tracker-event-panel" style={styles.eventPanel}>
           <div style={styles.panelTitle}>
             {subMode ? 'Tap ⇄ to select who comes off'
               : selectedPlayer ? `Logging for ${selectedPlayer.name}`

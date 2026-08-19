@@ -12,6 +12,7 @@ function Teams() {
   const [teams, setTeams] = useState([]);
   const [form, setForm] = useState({ name: '', division: '' });
   const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
   const role = getRole();
   const navigate = useNavigate();
 
@@ -29,6 +30,7 @@ function Teams() {
       const res = await createTeam(form);
       setTeams([...teams, res.data]);
       setForm({ name: '', division: '' });
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong.');
     }
@@ -41,26 +43,28 @@ function Teams() {
 
   return (
     <div>
-      <h2 style={styles.heading}>Teams</h2>
+      <div style={styles.pageHeader}>
+        <h2 style={styles.heading}>Teams</h2>
+        {role === 'admin' && (
+          <button style={styles.addBtn} onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : '+ Add team'}
+          </button>
+        )}
+      </div>
 
-      {role === 'admin' && (
+      {role === 'admin' && showForm && (
         <div style={styles.card}>
-          <h3 style={styles.subheading}>Add a team</h3>
-          <div style={styles.formRow}>
-            <input
-              style={styles.input}
+          <div style={styles.formCol}>
+            <input style={styles.input}
               placeholder="Team name e.g. Glasgow Men's 1"
               value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-            />
-            <select
-              style={styles.input}
-              value={form.division}
+              onChange={e => setForm({ ...form, name: e.target.value })} />
+            <select style={styles.input} value={form.division}
               onChange={e => setForm({ ...form, division: e.target.value })}>
               <option value="">Select division</option>
               {DIVISIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
-            <button style={styles.button} onClick={handleSubmit}>Add</button>
+            <button style={styles.button} onClick={handleSubmit}>Add team</button>
           </div>
           {error && <p style={styles.error}>{error}</p>}
         </div>
@@ -70,15 +74,13 @@ function Teams() {
         const divTeams = grouped[div];
         if (!divTeams || divTeams.length === 0) return null;
         return (
-          <div key={div} style={{ marginBottom: '28px' }}>
+          <div key={div} style={{ marginBottom: '24px' }}>
             <h3 style={styles.divHeading}>{div}</h3>
             {divTeams.map(team => (
-              <div
-                key={team.id}
-                style={styles.teamCard}
+              <div key={team.id} style={styles.teamCard}
                 onClick={() => navigate(`/teams/${team.id}`)}>
                 <strong style={styles.teamName}>{team.name}</strong>
-                <span style={styles.viewBtn}>View players →</span>
+                <span style={styles.viewBtn}>→</span>
               </div>
             ))}
           </div>
@@ -93,35 +95,42 @@ function Teams() {
 }
 
 const styles = {
-  heading: { marginBottom: '24px', fontSize: '24px', color: '#f0f0f0' },
-  subheading: { marginBottom: '12px', fontSize: '16px', fontWeight: '500', color: '#ccc' },
-  divHeading: {
-    fontSize: '13px', fontWeight: '600', color: '#F5C800',
-    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px',
+  pageHeader: {
+    display: 'flex', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: '20px',
+  },
+  heading: { fontSize: '22px', color: '#f0f0f0' },
+  addBtn: {
+    padding: '8px 16px', background: '#F5C800', color: '#111',
+    border: 'none', borderRadius: '8px', cursor: 'pointer',
+    fontSize: '13px', fontWeight: '600',
   },
   card: {
-    background: '#1e1e1e', padding: '20px', borderRadius: '10px',
-    marginBottom: '32px', border: '1px solid #2a2a2a',
+    background: '#1e1e1e', padding: '16px', borderRadius: '10px',
+    marginBottom: '24px', border: '1px solid #2a2a2a',
   },
-  formRow: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
+  formCol: { display: 'flex', flexDirection: 'column', gap: '10px' },
   input: {
-    padding: '8px 12px', borderRadius: '6px', border: '1px solid #333',
-    fontSize: '14px', flex: '1', minWidth: '150px',
-    background: '#2a2a2a', color: '#f0f0f0',
+    padding: '10px 12px', borderRadius: '6px', border: '1px solid #333',
+    fontSize: '14px', background: '#2a2a2a', color: '#f0f0f0',
   },
   button: {
-    padding: '8px 20px', background: '#F5C800', color: '#111',
+    padding: '10px', background: '#F5C800', color: '#111',
     border: 'none', borderRadius: '6px', cursor: 'pointer',
     fontSize: '14px', fontWeight: '600',
   },
-  error: { color: '#ff6b6b', marginTop: '8px', fontSize: '14px' },
+  error: { color: '#ff6b6b', marginTop: '8px', fontSize: '13px' },
+  divHeading: {
+    fontSize: '12px', fontWeight: '600', color: '#F5C800',
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px',
+  },
   teamCard: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '14px 18px', background: '#1a1a1a', borderRadius: '8px',
+    padding: '14px 16px', background: '#1a1a1a', borderRadius: '8px',
     border: '1px solid #2a2a2a', marginBottom: '8px', cursor: 'pointer',
   },
   teamName: { color: '#f0f0f0', fontSize: '15px' },
-  viewBtn: { color: '#F5C800', fontSize: '13px' },
+  viewBtn: { color: '#F5C800', fontSize: '16px' },
   empty: { color: '#555', fontSize: '14px' },
 };
 

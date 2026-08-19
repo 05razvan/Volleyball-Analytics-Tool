@@ -144,6 +144,12 @@ function AppInner() {
           .desktop-nav { display: none !important; }
           .hamburger-btn { display: flex !important; }
         }
+        @media (max-width: 600px) {
+          .tracker-body { flex-direction: column !important; height: auto !important; }
+          .tracker-player-panel { width: 100% !important; border-right: none !important; border-bottom: 1px solid #2a2a4a; max-height: 280px; }
+          .tracker-event-panel { height: auto !important; }
+          .rotation-mini { display: flex; gap: 8px; }
+        }
       `}</style>
       <Nav loggedIn={loggedIn} onLogout={handleLogout} />
       <div style={styles.container}>
