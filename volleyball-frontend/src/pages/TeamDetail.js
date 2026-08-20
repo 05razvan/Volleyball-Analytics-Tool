@@ -38,7 +38,7 @@ function TeamDetail() {
       });
   };
 
-  useEffect(() => { load(); }, [teamId]);
+  useEffect(() => { load(); }, [teamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectPlayer = async (player) => {
     if (selectedPlayer?.id === player.id) {

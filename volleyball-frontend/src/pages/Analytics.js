@@ -3,7 +3,7 @@ import { getTeams, getTeamAnalytics, getTeamTrend, getPlayerAnalytics,
          getPlayerMatchHistory, getTopPerformers, getMatchCount } from '../api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, Cell
+  ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 
 function StatCard({ label, value, unit = '', color = '#F5C800' }) {
