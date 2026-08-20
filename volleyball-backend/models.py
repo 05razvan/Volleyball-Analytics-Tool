@@ -10,7 +10,7 @@ DIVISIONS = [
 ]
 
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
-EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "ace", 
+EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace", 
                "serve_error", "assist", "opponent_point", "our_point"]
 
 class User(Base):

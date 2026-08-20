@@ -101,7 +101,11 @@ function Analytics() {
 
       <div style={styles.controls}>
         <select style={styles.select} value={selectedTeam}
-          onChange={e => { setSelectedTeam(e.target.value); setView('team'); setActivePlayer(null); }}>
+          onChange={e => {
+            setSelectedTeam(e.target.value);
+            setView('team');
+            setActivePlayer(null);
+          }}>
           <option value="">Select a team</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
@@ -140,9 +144,9 @@ function Analytics() {
         <>
           <h3 style={styles.sectionTitle}>Team overview</h3>
           <div style={styles.statRow}>
-            <StatCard label="Attack efficiency" value={teamStats.team_attack_efficiency} unit="%" />
             <StatCard label="Kill %" value={teamStats.team_kill_pct} unit="%" />
-            <StatCard label="Serve %" value={teamStats.team_serve_pct} unit="%" />
+            <StatCard label="Kill block %" value={teamStats.team_kill_block_pct} unit="%" color="#9b59b6" />
+            <StatCard label="Serve %" value={teamStats.team_serve_pct} unit="%" color="#3498db" />
             <StatCard label="Serve error rate" value={teamStats.team_serve_error_rate} unit="%" color="#e74c3c" />
           </div>
 
@@ -164,16 +168,16 @@ function Analytics() {
               <h3 style={styles.sectionTitle}>Trends — last {trend.length} matches</h3>
               <div style={mobile ? styles.chartColStack : styles.chartRow}>
                 <div style={styles.chartCard}>
-                  <div style={styles.chartTitle}>Attack efficiency</div>
+                  <div style={styles.chartTitle}>Kill % per match</div>
                   <ResponsiveContainer width="100%" height={chartH}>
                     <LineChart data={trend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#888' }} />
                       <YAxis tick={{ fontSize: 10, fill: '#888' }} unit="%" width={30} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Line type="monotone" dataKey="attack_efficiency"
-                        stroke="#F5C800" strokeWidth={2} dot={{ r: 3, fill: '#F5C800' }}
-                        name="Attack eff." unit="%" />
+                      <Line type="monotone" dataKey="kill_pct"
+                        stroke="#F5C800" strokeWidth={2}
+                        dot={{ r: 3, fill: '#F5C800' }} name="Kill %" unit="%" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -186,27 +190,11 @@ function Analytics() {
                       <YAxis tick={{ fontSize: 10, fill: '#888' }} unit="%" width={30} />
                       <Tooltip content={<CustomTooltip />} />
                       <Line type="monotone" dataKey="serve_error_rate"
-                        stroke="#e74c3c" strokeWidth={2} dot={{ r: 3, fill: '#e74c3c' }}
-                        name="Serve errors" unit="%" />
+                        stroke="#e74c3c" strokeWidth={2}
+                        dot={{ r: 3, fill: '#e74c3c' }} name="Serve errors" unit="%" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
-              <div style={styles.chartCard}>
-                <div style={styles.chartTitle}>Kill % per match</div>
-                <ResponsiveContainer width="100%" height={chartH}>
-                  <BarChart data={trend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#888' }} />
-                    <YAxis tick={{ fontSize: 10, fill: '#888' }} unit="%" width={30} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill: '#2a2a2a' }} />
-                    <Bar dataKey="kill_pct" name="Kill %" unit="%" radius={[4,4,0,0]}>
-                      {trend.map((_, i) => (
-                        <Cell key={i} fill={i === trend.length - 1 ? '#F5C800' : '#3a3a00'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
               </div>
             </>
           )}
@@ -242,15 +230,15 @@ function Analytics() {
               <h3 style={styles.sectionTitle}>{playerStats.name}</h3>
               <div style={styles.statRow}>
                 <StatCard label="Kill %" value={playerStats.kill_pct} unit="%" />
-                <StatCard label="Serve %" value={playerStats.serve_pct} unit="%" />
-                <StatCard label="Attack eff." value={playerStats.attack_efficiency} unit="%" />
+                <StatCard label="Serve %" value={playerStats.serve_pct} unit="%" color="#3498db" />
+                <StatCard label="Serve errors" value={playerStats.serve_error_rate} unit="%" color="#e74c3c" />
               </div>
               <div style={styles.statRow}>
                 <StatCard label="Kills" value={playerStats.kills} color="#2ecc71" />
+                <StatCard label="Kill blocks" value={playerStats.kill_blocks ?? 0} color="#9b59b6" />
                 <StatCard label="Aces" value={playerStats.aces} color="#3498db" />
-                <StatCard label="Blocks" value={playerStats.blocks} color="#9b59b6" />
+                <StatCard label="Blocks" value={playerStats.blocks} color="#e67e22" />
                 <StatCard label="Digs" value={playerStats.digs} color="#1abc9c" />
-                <StatCard label="Assists" value={playerStats.assists} color="#e67e22" />
               </div>
 
               {playerHistory.length > 1 && (
@@ -308,22 +296,22 @@ function Analytics() {
                       <span>Date</span>
                       <span>Res</span>
                       <span>K</span>
+                      <span>KB</span>
                       <span>A</span>
                       <span>B</span>
                       <span>D</span>
                       <span>K%</span>
-                      <span>Eff</span>
                     </div>
                     {playerHistory.map(h => (
                       <div key={h.match_id} style={styles.tableRow}>
                         <span style={{ color: '#888' }}>{h.date}</span>
                         <span style={{ fontWeight: '600' }}>{h.result}</span>
                         <span>{h.kills}</span>
+                        <span>{h.kill_blocks ?? 0}</span>
                         <span>{h.aces}</span>
                         <span>{h.blocks}</span>
                         <span>{h.digs}</span>
                         <span style={{ color: '#F5C800' }}>{h.kill_pct}%</span>
-                        <span style={{ color: '#F5C800' }}>{h.attack_efficiency}%</span>
                       </div>
                     ))}
                   </div>
@@ -402,12 +390,12 @@ const styles = {
     borderRadius: '10px', overflow: 'hidden', marginBottom: '16px',
   },
   tableHeader: {
-    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.6fr)',
+    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)',
     padding: '8px 12px', background: '#1e1e1e', fontSize: '10px',
     fontWeight: '600', color: '#F5C800', textTransform: 'uppercase',
   },
   tableRow: {
-    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.6fr)',
+    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)',
     padding: '8px 12px', fontSize: '12px',
     borderTop: '1px solid #222', color: '#ccc',
   },

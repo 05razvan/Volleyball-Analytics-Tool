@@ -18,6 +18,7 @@ const EVENT_GROUPS = [
     label: 'Attack',
     events: [
       { type: 'kill',   label: 'Kill',   color: '#27ae60', points: 'us'  },
+      { type: 'kill_block', label: 'Kill Block',  color: '#8e44ad', points: 'us'  },
       { type: 'spike',  label: 'Spike',  color: '#8e44ad', points: null  },
       { type: 'block',  label: 'Block',  color: '#d35400', points: null  },
     ]

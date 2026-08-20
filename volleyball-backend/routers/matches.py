@@ -8,7 +8,7 @@ from typing import List
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
-POINTS_FOR_US = {"kill", "ace", "our_point"}
+POINTS_FOR_US = {"kill", "ace", "our_point", "kill_block"}
 POINTS_FOR_THEM = {"serve_error", "opponent_point"}
 
 def calculate_score(match_id: int, set_number: int, db: Session):
@@ -212,3 +212,8 @@ def get_lineup(match_id: int, db: Session = Depends(get_db)):
         else:
             result["bench"].append(entry)
     return result
+
+@router.get("/{match_id}/sets")
+def get_sets(match_id: int, db: Session = Depends(get_db)):
+    sets = db.query(SetScore).filter(SetScore.match_id == match_id).all()
+    return [{"set": s.set_number, "us": s.our_score, "them": s.opponent_score} for s in sets]

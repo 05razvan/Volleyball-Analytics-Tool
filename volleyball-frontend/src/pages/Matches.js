@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMatches, createMatch, getTeams, startMatch, getMatchTopPerformers } from '../api';
+import { getMatches, createMatch, getTeams, startMatch,
+         getMatchTopPerformers, getMatchSets } from '../api';
 import { getRole } from '../auth';
 
 const DIVISIONS = [
@@ -17,13 +18,23 @@ function Matches() {
   const [error, setError] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
   const [matchTop, setMatchTop] = useState({});
+  const [matchSets, setMatchSets] = useState({});
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
   const role = getRole();
   const canCreateMatch = role === 'coach' || role === 'captain' || role === 'admin';
 
   useEffect(() => {
-    getMatches().then(res => setMatches(res.data));
+    getMatches().then(res => {
+      const ms = res.data;
+      setMatches(ms);
+      // fetch sets for completed matches automatically
+      ms.filter(m => m.status === 'completed').forEach(m => {
+        getMatchSets(m.id).then(r => {
+          setMatchSets(prev => ({ ...prev, [m.id]: r.data }));
+        }).catch(() => {});
+      });
+    });
     getTeams().then(res => setTeams(res.data));
   }, []);
 
@@ -86,6 +97,12 @@ function Matches() {
   };
 
   const teamName = (id) => teams.find(t => t.id === id)?.name ?? 'Unknown';
+  const ourTeam = (match) => teams.find(t => t.id === match.our_team_id);
+  const oppTeam = (match) => {
+    const oppId = match.home_team_id === match.our_team_id
+      ? match.away_team_id : match.home_team_id;
+    return teams.find(t => t.id === oppId);
+  };
 
   const filtered = divisionFilter
     ? matches.filter(m => {
@@ -107,6 +124,12 @@ function Matches() {
 
   const MatchCard = ({ match }) => {
     const top = matchTop[match.id];
+    const sets = matchSets[match.id] || [];
+    const setsWon = sets.filter(s => s.us > s.them).length;
+    const setsLost = sets.filter(s => s.them > s.us).length;
+    const us = ourTeam(match);
+    const opp = oppTeam(match);
+
     return (
       <div style={styles.matchCardWrapper}>
         <div style={{
@@ -115,11 +138,38 @@ function Matches() {
         }}
           onClick={() => handleMatchClick(match)}>
           <div style={styles.matchMain}>
-            <div style={styles.matchTeams}>
-              <strong style={styles.teamText}>{teamName(match.home_team_id)}</strong>
-              <span style={styles.vs}>vs</span>
-              <strong style={styles.teamText}>{teamName(match.away_team_id)}</strong>
-            </div>
+            {/* Score display for completed matches */}
+            {match.status === 'completed' && sets.length > 0 ? (
+              <div style={styles.scoreDisplay}>
+                <div style={styles.scoreTeam}>
+                  <span style={styles.scoreTeamName}>{us?.name ?? teamName(match.our_team_id)}</span>
+                  <span style={styles.scoreNum}>{setsWon}</span>
+                </div>
+                <span style={styles.scoreDash}>–</span>
+                <div style={styles.scoreTeamRight}>
+                  <span style={styles.scoreNum}>{setsLost}</span>
+                  <span style={styles.scoreTeamName}>{opp?.name ?? teamName(match.away_team_id)}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={styles.matchTeams}>
+                <strong style={styles.teamText}>{teamName(match.home_team_id)}</strong>
+                <span style={styles.vs}>vs</span>
+                <strong style={styles.teamText}>{teamName(match.away_team_id)}</strong>
+              </div>
+            )}
+
+            {/* Set by set scores */}
+            {match.status === 'completed' && sets.length > 0 && (
+              <div style={styles.setsRow}>
+                {sets.map(s => (
+                  <span key={s.set} style={styles.setChip}>
+                    {s.us}–{s.them}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div style={styles.meta}>
               {new Date(match.date).toLocaleDateString('en-GB', {
                 weekday: 'short', day: 'numeric', month: 'short',
@@ -128,14 +178,13 @@ function Matches() {
               {match.location && ` · ${match.location}`}
             </div>
           </div>
+
           <div style={styles.matchRight}>
             {match.status === 'live' && (
               <span style={styles.liveBadge}>● LIVE</span>
             )}
             {match.status === 'completed' && (
-              <span style={styles.doneBadge}>
-                {top ? '▲' : '▼'}
-              </span>
+              <span style={styles.doneBadge}>{top ? '▲' : '▼ stats'}</span>
             )}
             {match.status === 'scheduled' && canCreateMatch && (
               <button style={styles.startBtn}
@@ -244,7 +293,6 @@ function Matches() {
       {completed.length > 0 && (
         <div style={{ marginBottom: '20px' }}>
           <h3 style={styles.sectionHeading}>Completed</h3>
-          <p style={styles.hint}>Tap a match to see top performers</p>
           {completed.map(m => <MatchCard key={m.id} match={m} />)}
         </div>
       )}
@@ -270,6 +318,7 @@ const styles = {
   input: {
     padding: '10px 12px', borderRadius: '6px', border: '1px solid #333',
     fontSize: '14px', background: '#2a2a2a', color: '#f0f0f0', width: '100%',
+    boxSizing: 'border-box',
   },
   button: {
     padding: '10px', background: '#F5C800', color: '#111',
@@ -287,7 +336,6 @@ const styles = {
     fontSize: '12px', fontWeight: '600', color: '#F5C800',
     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px',
   },
-  hint: { color: '#555', fontSize: '11px', marginBottom: '8px' },
   matchCardWrapper: { marginBottom: '8px' },
   matchCard: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -295,13 +343,29 @@ const styles = {
     border: '1px solid #2a2a2a',
   },
   matchMain: { flex: 1, minWidth: 0 },
+  scoreDisplay: {
+    display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px',
+  },
+  scoreTeam: { display: 'flex', alignItems: 'center', gap: '8px', flex: 1 },
+  scoreTeamRight: { display: 'flex', alignItems: 'center', gap: '8px', flex: 1, justifyContent: 'flex-end' },
+  scoreTeamName: { color: '#f0f0f0', fontSize: '13px', fontWeight: '500' },
+  scoreNum: {
+    fontSize: '22px', fontWeight: '800', color: '#F5C800',
+    lineHeight: 1, minWidth: '24px', textAlign: 'center',
+  },
+  scoreDash: { color: '#555', fontSize: '18px' },
+  setsRow: { display: 'flex', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' },
+  setChip: {
+    background: '#2a2a2a', color: '#888', fontSize: '11px',
+    padding: '2px 6px', borderRadius: '6px',
+  },
   matchTeams: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' },
   teamText: { color: '#f0f0f0', fontSize: '14px' },
   vs: { color: '#555', fontSize: '12px' },
   matchRight: { display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' },
   meta: { color: '#888', fontSize: '11px' },
   liveBadge: { color: '#ff6b6b', fontWeight: '700', fontSize: '12px' },
-  doneBadge: { color: '#888', fontSize: '14px' },
+  doneBadge: { color: '#888', fontSize: '12px', cursor: 'pointer' },
   startBtn: {
     padding: '5px 12px', background: '#F5C800', color: '#111',
     border: 'none', borderRadius: '6px', cursor: 'pointer',

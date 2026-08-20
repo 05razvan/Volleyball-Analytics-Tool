@@ -20,6 +20,7 @@ def get_player_stats(player_id: int, db: Session,
     events = query.all()
 
     kills = sum(1 for e in events if e.event_type == "kill")
+    kill_blocks = sum(1 for e in events if e.event_type == "kill_block")
     spikes = sum(1 for e in events if e.event_type == "spike")
     errors = sum(1 for e in events if e.event_type == "error")
     aces = sum(1 for e in events if e.event_type == "ace")
@@ -36,6 +37,7 @@ def get_player_stats(player_id: int, db: Session,
     return {
         "player_id": player_id,
         "kills": kills, "spikes": spikes, "errors": errors,
+        "kill_blocks": kill_blocks,
         "aces": aces, "serve_errors": serve_errors,
         "blocks": blocks, "digs": digs, "assists": assists,
         "kill_pct": round((kills / total_attacks) * 100, 1) if total_attacks > 0 else 0,
@@ -93,6 +95,7 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
         player_stats.append(stats)
 
     total_kills = sum(s["kills"] for s in player_stats)
+    total_kill_blocks = sum(s["kill_blocks"] for s in player_stats)
     total_errors = sum(s["errors"] for s in player_stats)
     total_attacks = sum(s["total_attacks"] for s in player_stats)
     total_aces = sum(s["aces"] for s in player_stats)
@@ -105,7 +108,7 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
         "team_id": team_id,
         "players": player_stats,
         "team_kill_pct": round((total_kills / total_attacks) * 100, 1) if total_attacks > 0 else 0,
-        "team_attack_efficiency": round(((total_kills - total_errors) / total_attacks) * 100, 1) if total_attacks > 0 else 0,
+        "team_kill_block_pct": round((total_kill_blocks / total_attacks) * 100, 1) if total_attacks > 0 else 0,
         "team_serve_pct": round((total_aces / total_serves) * 100, 1) if total_serves > 0 else 0,
         "team_serve_error_rate": round((total_serve_errors / total_serves) * 100, 1) if total_serves > 0 else 0,
     }
