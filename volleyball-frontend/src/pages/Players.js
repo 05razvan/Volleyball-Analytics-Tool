@@ -144,16 +144,16 @@ function Players() {
 
           <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '16px' }}>
             {[
-              { label: 'Kill %', value: `${playerStats.kill_pct}%` },
-              { label: 'Serve %', value: `${playerStats.serve_pct}%` },
-              { label: 'Atk eff.', value: `${playerStats.attack_efficiency}%` },
-            ].map(s => (
-              <div key={s.label} style={styles.statBox}>
-                <div style={{ ...styles.statVal, color: '#F5C800' }}>{s.value}</div>
-                <div style={styles.statLabel}>{s.label}</div>
-              </div>
-            ))}
-          </div>
+            { label: 'Kill %', value: `${playerStats.kill_pct}%` },
+            { label: 'Serve %', value: `${playerStats.serve_pct}%` },
+            { label: 'Serve err %', value: `${playerStats.serve_error_rate ?? 0}%` },
+          ].map(s => (
+            <div key={s.label} style={styles.statBox}>
+              <div style={{ ...styles.statVal, color: '#F5C800' }}>{s.value}</div>
+              <div style={styles.statLabel}>{s.label}</div>
+            </div>
+          ))}
+        </div>
 
           {playerHistory.length > 1 && (
             <>

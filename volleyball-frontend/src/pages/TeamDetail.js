@@ -171,8 +171,8 @@ function TeamDetail() {
           </div>
           <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <StatBox label="Kill %" value={`${playerStats.kill_pct}%`} color="#F5C800" />
-            <StatBox label="Serve %" value={`${playerStats.serve_pct}%`} color="#F5C800" />
-            <StatBox label="Serve err" value={`${playerStats.serve_error_rate ?? 0}%`} color="#e74c3c" />
+            <StatBox label="Serve err %" value={`${playerStats.serve_error_rate ?? 0}%`} color="#e74c3c" />
+            <StatBox label="Aces" value={playerStats.aces} color="#3498db" />
           </div>
         </>
       ) : (

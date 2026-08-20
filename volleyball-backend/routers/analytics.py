@@ -35,16 +35,21 @@ def get_player_stats(player_id: int, db: Session,
     total_serves = aces + serve_errors + serves
 
     return {
-        "player_id": player_id,
-        "kills": kills, "spikes": spikes, "errors": errors,
-        "kill_blocks": kill_blocks,
-        "aces": aces, "serve_errors": serve_errors,
-        "blocks": blocks, "digs": digs, "assists": assists,
-        "kill_pct": round((kills / total_attacks) * 100, 1) if total_attacks > 0 else 0,
-        "serve_pct": round((aces / total_serves) * 100, 1) if total_serves > 0 else 0,
-        "attack_efficiency": round(((kills - errors) / total_attacks) * 100, 1) if total_attacks > 0 else 0,
-        "total_attacks": total_attacks,
-        "total_serves": total_serves,
+      "player_id": player_id,
+      "kills": kills,
+      "kill_blocks": kill_blocks,
+      "spikes": spikes,
+      "errors": errors,
+      "aces": aces,
+      "serve_errors": serve_errors,
+      "blocks": blocks,
+      "digs": digs,
+      "assists": assists,
+      "kill_pct": round((kills / total_attacks) * 100, 1) if total_attacks > 0 else 0,
+      "serve_pct": round((aces / total_serves) * 100, 1) if total_serves > 0 else 0,
+      "serve_error_rate": round((serve_errors / total_serves) * 100, 1) if total_serves > 0 else 0,
+      "total_attacks": total_attacks,
+      "total_serves": total_serves,
     }
 
 @router.get("/player/{player_id}")
