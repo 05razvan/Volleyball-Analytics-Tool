@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-motion';
+import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayersByTeam, getMatches, getTeams } from '../api';
 
 const BASE_URL = 'https://volleyball-analytics-tool-production.up.railway.app';
