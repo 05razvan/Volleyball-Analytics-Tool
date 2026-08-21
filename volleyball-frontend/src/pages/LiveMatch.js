@@ -65,6 +65,7 @@ function LiveMatch() {
   const [mobile, setMobile] = useState(window.innerWidth <= 700);
 
   const [phase, setPhase] = useState('lineup');
+  // eslint-disable-next-line no-unused-vars
   const [allPlayers, setAllPlayers] = useState([]);
   const [match, setMatch] = useState(null);
   const [teams, setTeams] = useState([]);
