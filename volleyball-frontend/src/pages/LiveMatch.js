@@ -154,13 +154,21 @@ function LiveMatch() {
 
   const isMiddle = (player) => player?.position === 'Middle Blocker';
 
+  // Check if libero has reached P4 (index 3) and should swap out
+  // Called after every rotation with the NEW positions array
   const checkLiberoSwapOut = (newPositions, swap) => {
     if (!swap) return { positions: newPositions };
     const libInPos = newPositions.findIndex(p => p?.id === swap.libero.id);
     if (libInPos === 3) {
+      // Libero reached P4 (front row) — swap middle back in silently
       const updated = [...newPositions];
       updated[libInPos] = swap.middle;
-      return { positions: updated, clearedSwap: true, returnedMiddle: swap.middle, returnedLibero: swap.libero };
+      return {
+        positions: updated,
+        clearedSwap: true,
+        returnedMiddle: swap.middle,
+        returnedLibero: swap.libero,
+      };
     }
     return { positions: newPositions };
   };
@@ -179,7 +187,9 @@ function LiveMatch() {
       .sort((a,b) => a.name.localeCompare(b.name));
     setPositions(newPositions);
     setBench(newBench);
-    setActiveLiberoSwap({ posIndex: pendingMiddlePosIndex, middle: pendingMiddle, libero });
+    // Store swap so we know to auto-swap out later
+    const swap = { posIndex: pendingMiddlePosIndex, middle: pendingMiddle, libero };
+    setActiveLiberoSwap(swap);
     setShowLiberoPrompt(false);
     setPendingMiddle(null);
     setPendingMiddlePosIndex(null);
@@ -189,21 +199,28 @@ function LiveMatch() {
     });
   };
 
+  // Rotate and check libero swap out — returns new state values
   const doRotation = (currentPositions, currentBench, currentSwap) => {
     const rotated = rotateClockwise(currentPositions);
     const { positions: final, clearedSwap, returnedMiddle, returnedLibero } =
       checkLiberoSwapOut(rotated, currentSwap);
+
     let newBench = currentBench;
     let newSwap = currentSwap;
+
     if (clearedSwap) {
       newSwap = null;
-      newBench = [...currentBench.filter(p => p.id !== returnedMiddle.id), returnedLibero]
-        .sort((a,b) => a.name.localeCompare(b.name));
+      newBench = [
+        ...currentBench.filter(p => p.id !== returnedMiddle.id),
+        returnedLibero,
+      ].sort((a,b) => a.name.localeCompare(b.name));
     }
+
     apiSaveLineup(matchId, {
       on_court: final.filter(Boolean).map(p => p.id),
       bench: newBench.map(p => p.id),
     });
+
     return { positions: final, bench: newBench, swap: newSwap };
   };
 
@@ -219,20 +236,27 @@ function LiveMatch() {
       alert(`Only the server (${serverPlayer?.name ?? 'P1'}) can log ${ev.label}`);
       return;
     }
+
     const event = {
       match_id: parseInt(matchId),
       player_id: selectedPlayer?.id ?? null,
       event_type: eventType,
       set_number: score?.current_set ?? 1,
     };
+
     await apiLogEvent(matchId, event);
     setLastEvent({ ...event, playerName: selectedPlayer?.name });
     setSelectedPlayer(null);
     fetchScore();
 
-    if (eventType === 'opponent_point') { setWeAreServing(false); return; }
-    if (['kill','ace','our_point','kill_block'].includes(eventType)) {
+    if (eventType === 'opponent_point') {
+      setWeAreServing(false);
+      return;
+    }
+
+    if (['kill', 'ace', 'our_point', 'kill_block'].includes(eventType)) {
       if (!weAreServing) {
+        // Sideout — rotate and check libero swap out
         const { positions: newPos, bench: newBench, swap: newSwap } =
           doRotation(positions, bench, activeLiberoSwap);
         setPositions(newPos);
@@ -242,7 +266,9 @@ function LiveMatch() {
       }
       return;
     }
+
     if (eventType === 'serve_error') {
+      // If middle in P1 serve errored — prompt libero swap
       if (selectedPlayer && isMiddle(selectedPlayer) && serverPlayer?.id === selectedPlayer.id) {
         triggerLiberoPrompt(selectedPlayer, 0);
       }
@@ -275,7 +301,12 @@ function LiveMatch() {
     navigate('/matches');
   };
 
-  const handleSubOut = (player) => { setSubTarget(player); setSubMode(true); setSelectedPlayer(null); };
+  const handleSubOut = (player) => {
+    setSubTarget(player);
+    setSubMode(true);
+    setSelectedPlayer(null);
+  };
+
   const handleSubIn = async (benchPlayer) => {
     if (!subTarget) return;
     const posIndex = positions.findIndex(p => p?.id === subTarget.id);
@@ -293,12 +324,14 @@ function LiveMatch() {
       bench: newBench.map(p => p.id),
     });
   };
+
   const cancelSub = () => { setSubMode(false); setSubTarget(null); };
 
   if (!score || !match) return <div style={s.loading}>Loading...</div>;
 
   const ourTeamName = teamName(match.our_team_id);
-  const opponentId = match.home_team_id === match.our_team_id ? match.away_team_id : match.home_team_id;
+  const opponentId = match.home_team_id === match.our_team_id
+    ? match.away_team_id : match.home_team_id;
   const opponentName = teamName(opponentId);
   const setsWon = (score.sets||[]).filter(st => st.us > st.them).length;
   const setsLost = (score.sets||[]).filter(st => st.them > st.us).length;
@@ -317,15 +350,24 @@ function LiveMatch() {
       <div style={s.page}>
         <div style={s.lineupHeader}>
           <div style={s.lineupTitle}>{ourTeamName} vs {opponentName}</div>
-          <div style={s.lineupSub}>Tap a player then tap a position · {positions.filter(Boolean).length}/6</div>
+          <div style={s.lineupSub}>
+            Tap a player then tap a position · {positions.filter(Boolean).length}/6
+          </div>
         </div>
         <div style={{ ...s.lineupBody, flexDirection: mobile ? 'column' : 'row' }}>
-          <div style={{ ...s.lineupLeft, width: mobile ? '100%' : '220px', maxHeight: mobile ? '160px' : 'calc(100vh - 76px)' }}>
+          <div style={{
+            ...s.lineupLeft,
+            width: mobile ? '100%' : '220px',
+            maxHeight: mobile ? '160px' : 'calc(100vh - 76px)'
+          }}>
             <div style={s.lineupSectionTitle}>Squad</div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {bench.map(p => (
                 <div key={p.id}
-                  style={{ ...(mobile ? s.miniCard : s.lineupPlayerCard), ...(dragging?.id === p.id ? s.lineupPlayerDragging : {}) }}
+                  style={{
+                    ...(mobile ? s.miniCard : s.lineupPlayerCard),
+                    ...(dragging?.id === p.id ? s.lineupPlayerDragging : {})
+                  }}
                   onClick={() => setDragging(dragging?.id === p.id ? null : p)}>
                   {mobile ? (
                     <>
@@ -335,12 +377,15 @@ function LiveMatch() {
                     </>
                   ) : (
                     <div style={s.lineupPlayerLeft}>
-                      <span style={s.lineupJersey}>{p.jersey_number ? `#${p.jersey_number}` : '—'}</span>
+                      <span style={s.lineupJersey}>
+                        {p.jersey_number ? `#${p.jersey_number}` : '—'}
+                      </span>
                       <div>
                         <div style={s.lineupPlayerName}>{p.name}</div>
                         <div style={s.lineupPlayerPos}>{p.position ?? 'No position'}</div>
                       </div>
-                      {dragging?.id === p.id && <span style={{ color: '#F5C800', fontSize: '11px', marginLeft: '8px' }}>✓</span>}
+                      {dragging?.id === p.id &&
+                        <span style={{ color: '#F5C800', fontSize: '11px', marginLeft: '8px' }}>✓</span>}
                     </div>
                   )}
                 </div>
@@ -348,14 +393,23 @@ function LiveMatch() {
               {bench.length === 0 && <p style={s.empty}>All assigned</p>}
             </div>
           </div>
+
           <div style={{ ...s.lineupRight, flex: 1 }}>
-            {dragging && <div style={s.draggingHint}>Tap a slot to place <strong>{dragging.name}</strong></div>}
+            {dragging && (
+              <div style={s.draggingHint}>
+                Tap a slot to place <strong>{dragging.name}</strong>
+              </div>
+            )}
             <div style={s.courtContainer}>
               <div style={s.courtNetLabel}>NET</div>
               <div style={s.courtRow}>
                 {[3,2,1].map(i => (
                   <div key={i}
-                    style={{ ...s.courtSlot, ...(positions[i] ? s.courtSlotFilled : {}), ...(dragging ? s.courtSlotHighlight : {}) }}
+                    style={{
+                      ...s.courtSlot,
+                      ...(positions[i] ? s.courtSlotFilled : {}),
+                      ...(dragging ? s.courtSlotHighlight : {}),
+                    }}
                     onClick={() => {
                       if (dragging) { assignToPosition(dragging, i); setDragging(null); }
                       else if (positions[i]) { setDragging(positions[i]); removeFromPosition(i); }
@@ -363,8 +417,12 @@ function LiveMatch() {
                     <div style={s.courtPosLabel}>{posLabels[i].label}</div>
                     {positions[i] ? (
                       <>
-                        <div style={s.courtJersey}>{positions[i].jersey_number ? `#${positions[i].jersey_number}` : ''}</div>
-                        <div style={s.courtSlotName}>{mobile ? initials(positions[i].name) : positions[i].name}</div>
+                        <div style={s.courtJersey}>
+                          {positions[i].jersey_number ? `#${positions[i].jersey_number}` : ''}
+                        </div>
+                        <div style={s.courtSlotName}>
+                          {mobile ? initials(positions[i].name) : positions[i].name}
+                        </div>
                         {!mobile && <div style={s.courtSlotPos}>{positions[i].position ?? ''}</div>}
                       </>
                     ) : <div style={s.courtSlotEmpty}>{posLabels[i].sub}</div>}
@@ -375,7 +433,12 @@ function LiveMatch() {
               <div style={s.courtRow}>
                 {[4,5,0].map(i => (
                   <div key={i}
-                    style={{ ...s.courtSlot, ...(positions[i] ? s.courtSlotFilled : {}), ...(dragging ? s.courtSlotHighlight : {}), ...(i === 0 ? s.courtSlotServer : {}) }}
+                    style={{
+                      ...s.courtSlot,
+                      ...(positions[i] ? s.courtSlotFilled : {}),
+                      ...(dragging ? s.courtSlotHighlight : {}),
+                      ...(i === 0 ? s.courtSlotServer : {}),
+                    }}
                     onClick={() => {
                       if (dragging) { assignToPosition(dragging, i); setDragging(null); }
                       else if (positions[i]) { setDragging(positions[i]); removeFromPosition(i); }
@@ -384,8 +447,12 @@ function LiveMatch() {
                     {i === 0 && <div style={s.serverTag}>SRV</div>}
                     {positions[i] ? (
                       <>
-                        <div style={s.courtJersey}>{positions[i].jersey_number ? `#${positions[i].jersey_number}` : ''}</div>
-                        <div style={s.courtSlotName}>{mobile ? initials(positions[i].name) : positions[i].name}</div>
+                        <div style={s.courtJersey}>
+                          {positions[i].jersey_number ? `#${positions[i].jersey_number}` : ''}
+                        </div>
+                        <div style={s.courtSlotName}>
+                          {mobile ? initials(positions[i].name) : positions[i].name}
+                        </div>
                         {!mobile && <div style={s.courtSlotPos}>{positions[i].position ?? ''}</div>}
                       </>
                     ) : <div style={s.courtSlotEmpty}>{posLabels[i].sub}</div>}
@@ -394,7 +461,12 @@ function LiveMatch() {
               </div>
               <div style={s.courtBaseLabel}>BASELINE</div>
             </div>
-            <button style={{ ...s.startTrackingBtn, opacity: positions.filter(Boolean).length < 6 ? 0.4 : 1 }} onClick={handleStartLineup}>
+            <button
+              style={{
+                ...s.startTrackingBtn,
+                opacity: positions.filter(Boolean).length < 6 ? 0.4 : 1
+              }}
+              onClick={handleStartLineup}>
               Confirm lineup →
             </button>
           </div>
@@ -408,33 +480,47 @@ function LiveMatch() {
     return (
       <div style={s.page}>
         <div style={s.serveSelectPage}>
-          <div style={s.serveSelectTitle}>{(score?.current_set ?? 1) === 5 ? 'Set 5 — Coin toss' : `Set ${score?.current_set ?? 1}`}</div>
+          <div style={s.serveSelectTitle}>
+            {(score?.current_set ?? 1) === 5 ? 'Set 5 — Coin toss' : `Set ${score?.current_set ?? 1}`}
+          </div>
           <div style={s.serveSelectSub}>Who serves first?</div>
           <div style={s.serveSelectBtns}>
-            <button style={s.serveBtn} onClick={() => handleServeSelect(true)}>🏐 {ourTeamName} serves first</button>
-            <button style={{ ...s.serveBtn, ...s.serveBtnAlt }} onClick={() => handleServeSelect(false)}>{opponentName} serves first</button>
+            <button style={s.serveBtn} onClick={() => handleServeSelect(true)}>
+              🏐 {ourTeamName} serves first
+            </button>
+            <button style={{ ...s.serveBtn, ...s.serveBtnAlt }}
+              onClick={() => handleServeSelect(false)}>
+              {opponentName} serves first
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  const LiberoPrompt = () => showLiberoPrompt ? (
+  // ── LIBERO PROMPT ─────────────────────────────────────────────
+  const LiberoPrompt = () => !showLiberoPrompt ? null : (
     <div style={s.overlay}>
       <div style={s.promptCard}>
         <div style={s.promptTitle}>Libero swap</div>
-        <div style={s.promptSub}><strong>{pendingMiddle?.name}</strong> serve error. Which libero?</div>
+        <div style={s.promptSub}>
+          <strong>{pendingMiddle?.name}</strong> serve error from P1. Which libero comes in?
+        </div>
         <div style={s.promptBtns}>
           {liberos.map(lib => (
             <button key={lib.id} style={s.promptBtn} onClick={() => handleLiberoChoice(lib)}>
               {lib.name}{lib.jersey_number ? ` #${lib.jersey_number}` : ''}
             </button>
           ))}
-          <button style={s.promptSkipBtn} onClick={() => { setShowLiberoPrompt(false); setPendingMiddle(null); setPendingMiddlePosIndex(null); }}>Skip</button>
+          <button style={s.promptSkipBtn} onClick={() => {
+            setShowLiberoPrompt(false);
+            setPendingMiddle(null);
+            setPendingMiddlePosIndex(null);
+          }}>Skip</button>
         </div>
       </div>
     </div>
-  ) : null;
+  );
 
   // ── MOBILE TRACKING ───────────────────────────────────────────
   if (mobile) {
@@ -451,6 +537,7 @@ function LiveMatch() {
       <div style={m.page}>
         <LiberoPrompt />
 
+        {/* Score bar */}
         <div style={m.scoreBar}>
           <div style={m.scoreTeamBlock}>
             <div style={m.scoreTeamName}>{ourTeamName}</div>
@@ -474,79 +561,162 @@ function LiveMatch() {
           </div>
         </div>
 
+        {/* Court diagram — tap to select player */}
         <div style={m.courtSection}>
           <div style={m.courtNet}>NET</div>
+          {/* Front row */}
           <div style={m.courtRow}>
             {courtDisplayOrder.slice(0,3).map(({ posIdx, label }) => {
               const player = positions[posIdx];
               const isSelected = selectedPlayer?.id === player?.id;
               const isServer = posIdx === 0 && weAreServing;
               return (
-                <button key={posIdx}
-                  style={{ ...m.courtTile, ...(player && isSelected ? m.courtTileSelected : {}), ...(isServer ? m.courtTileServer : {}), ...(subMode && player ? m.courtTileSubMode : {}), ...(!player ? m.courtTileEmpty : {}) }}
-                  onClick={() => { if (!player) return; if (subMode) handleSubOut(player); else setSelectedPlayer(isSelected ? null : player); }}>
-                  <div style={m.courtTilePos}>{label}</div>
-                  {player ? (
-                    <>
-                      <div style={m.courtTileInitials}>{initials(player.name)}</div>
-                      <div style={m.courtTileNum}>{player.jersey_number ? `#${player.jersey_number}` : ''}</div>
-                      {activeLiberoSwap?.libero.id === player.id && <div style={m.libBadge}>LIB</div>}
-                    </>
-                  ) : <div style={m.courtTileEmptyText}>—</div>}
-                </button>
+                <div key={posIdx} style={m.courtTileWrapper}>
+                  <button
+                    style={{
+                      ...m.courtTile,
+                      ...(player && isSelected ? m.courtTileSelected : {}),
+                      ...(isServer ? m.courtTileServer : {}),
+                      ...(!player ? m.courtTileEmpty : {}),
+                    }}
+                    onClick={() => {
+                      if (!player || subMode) return;
+                      setSelectedPlayer(isSelected ? null : player);
+                    }}>
+                    <div style={m.courtTilePos}>{label}</div>
+                    {player ? (
+                      <>
+                        <div style={m.courtTileInitials}>{initials(player.name)}</div>
+                        <div style={m.courtTileNum}>
+                          {player.jersey_number ? `#${player.jersey_number}` : ''}
+                        </div>
+                        {activeLiberoSwap?.libero.id === player.id &&
+                          <div style={m.libBadge}>LIB</div>}
+                      </>
+                    ) : <div style={m.courtTileEmptyText}>—</div>}
+                  </button>
+                  {/* Sub button under each court tile */}
+                  {player && (
+                    <button
+                      style={{
+                        ...m.tileSubBtn,
+                        ...(subMode && subTarget?.id === player.id ? m.tileSubBtnActive : {}),
+                      }}
+                      onClick={() => {
+                        if (subMode && subTarget?.id === player.id) {
+                          cancelSub();
+                        } else {
+                          handleSubOut(player);
+                        }
+                      }}>
+                      ⇄
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
           <div style={m.courtBaseline} />
+          {/* Back row */}
           <div style={m.courtRow}>
             {courtDisplayOrder.slice(3).map(({ posIdx, label }) => {
               const player = positions[posIdx];
               const isSelected = selectedPlayer?.id === player?.id;
               const isServer = posIdx === 0 && weAreServing;
               return (
-                <button key={posIdx}
-                  style={{ ...m.courtTile, ...(player && isSelected ? m.courtTileSelected : {}), ...(isServer ? m.courtTileServer : {}), ...(subMode && player ? m.courtTileSubMode : {}), ...(!player ? m.courtTileEmpty : {}) }}
-                  onClick={() => { if (!player) return; if (subMode) handleSubOut(player); else setSelectedPlayer(isSelected ? null : player); }}>
-                  <div style={m.courtTilePos}>{label}{isServer ? ' ▶' : ''}</div>
-                  {player ? (
-                    <>
-                      <div style={m.courtTileInitials}>{initials(player.name)}</div>
-                      <div style={m.courtTileNum}>{player.jersey_number ? `#${player.jersey_number}` : ''}</div>
-                      {activeLiberoSwap?.libero.id === player.id && <div style={m.libBadge}>LIB</div>}
-                    </>
-                  ) : <div style={m.courtTileEmptyText}>—</div>}
-                </button>
+                <div key={posIdx} style={m.courtTileWrapper}>
+                  <button
+                    style={{
+                      ...m.courtTile,
+                      ...(player && isSelected ? m.courtTileSelected : {}),
+                      ...(isServer ? m.courtTileServer : {}),
+                      ...(!player ? m.courtTileEmpty : {}),
+                    }}
+                    onClick={() => {
+                      if (!player || subMode) return;
+                      setSelectedPlayer(isSelected ? null : player);
+                    }}>
+                    <div style={m.courtTilePos}>{label}{isServer ? ' ▶' : ''}</div>
+                    {player ? (
+                      <>
+                        <div style={m.courtTileInitials}>{initials(player.name)}</div>
+                        <div style={m.courtTileNum}>
+                          {player.jersey_number ? `#${player.jersey_number}` : ''}
+                        </div>
+                        {activeLiberoSwap?.libero.id === player.id &&
+                          <div style={m.libBadge}>LIB</div>}
+                      </>
+                    ) : <div style={m.courtTileEmptyText}>—</div>}
+                  </button>
+                  {player && (
+                    <button
+                      style={{
+                        ...m.tileSubBtn,
+                        ...(subMode && subTarget?.id === player.id ? m.tileSubBtnActive : {}),
+                      }}
+                      onClick={() => {
+                        if (subMode && subTarget?.id === player.id) {
+                          cancelSub();
+                        } else {
+                          handleSubOut(player);
+                        }
+                      }}>
+                      ⇄
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
           <div style={m.courtBaselineLabel}>BASELINE</div>
         </div>
 
-        {(bench.length > 0 || subMode) && (
+        {/* Bench — shown when in sub mode */}
+        {subMode && (
           <div style={m.benchStrip}>
-            <div style={m.benchLabel}>{subMode ? 'BENCH — tap to sub in' : 'BENCH'}</div>
+            <div style={m.benchLabel}>
+              Tap to sub in for <strong>{subTarget?.name}</strong>
+            </div>
             <div style={m.benchRow}>
               {bench.map(p => (
-                <button key={p.id}
-                  style={{ ...m.benchTile, ...(subMode ? m.benchTileActive : {}) }}
-                  onClick={() => subMode && handleSubIn(p)}>
+                <button key={p.id} style={m.benchTileActive}
+                  onClick={() => handleSubIn(p)}>
                   <div style={m.benchInitials}>{initials(p.name)}</div>
                   <div style={m.benchNum}>{p.jersey_number ? `#${p.jersey_number}` : '—'}</div>
                 </button>
               ))}
-              {subMode && <button style={m.cancelSubBtn} onClick={cancelSub}>✕</button>}
+              <button style={m.cancelSubBtn} onClick={cancelSub}>✕ Cancel</button>
             </div>
           </div>
         )}
 
+        {/* Bench display when not in sub mode */}
+        {!subMode && bench.length > 0 && (
+          <div style={m.benchStrip}>
+            <div style={m.benchLabel}>BENCH</div>
+            <div style={m.benchRow}>
+              {bench.map(p => (
+                <div key={p.id} style={m.benchTile}>
+                  <div style={m.benchInitials}>{initials(p.name)}</div>
+                  <div style={m.benchNum}>{p.jersey_number ? `#${p.jersey_number}` : '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stat buttons */}
         <div style={m.statSection}>
           <div style={m.statBanner}>
             {subMode ? (
-              <span style={{ color: '#e74c3c' }}>Tap court player to sub out</span>
+              <span style={{ color: '#e74c3c' }}>
+                Subbing out <strong>{subTarget?.name}</strong> — tap ⇄ again to cancel
+              </span>
             ) : selectedPlayer ? (
               <>
                 <span style={{ color: '#F5C800', fontWeight: '700' }}>{selectedPlayer.name}</span>
-                {selectedPlayer.id === serverPlayer?.id && <span style={{ color: '#2ecc71', fontSize: '10px' }}> (server)</span>}
+                {selectedPlayer.id === serverPlayer?.id &&
+                  <span style={{ color: '#2ecc71', fontSize: '10px' }}> (server)</span>}
                 <button style={m.clearBtn} onClick={() => setSelectedPlayer(null)}>✕</button>
               </>
             ) : (
@@ -558,10 +728,16 @@ function LiveMatch() {
             <div style={m.statGrid}>
               {EVENT_GROUPS.map(group => {
                 const isServeGroup = group.label === 'Serve';
-                const canUse = selectedPlayer && (!isServeGroup || selectedPlayer.id === serverPlayer?.id);
+                const canUse = selectedPlayer &&
+                  (!isServeGroup || selectedPlayer.id === serverPlayer?.id);
                 return group.events.map(ev => (
                   <button key={ev.type}
-                    style={{ ...m.statBtn, background: ev.color, opacity: canUse ? 1 : 0.2 }}
+                    style={{
+                      ...m.statBtn,
+                      background: ev.color,
+                      opacity: canUse ? 1 : 0.2,
+                      cursor: canUse ? 'pointer' : 'not-allowed',
+                    }}
                     onClick={() => canUse && handleEvent(ev.type)}>
                     <div style={m.statBtnLabel}>{ev.label}</div>
                     {ev.points === 'us' && <div style={m.statBtnPts}>+pt</div>}
@@ -573,10 +749,14 @@ function LiveMatch() {
           )}
 
           {lastEvent && (
-            <div style={m.lastEventBar}>✓ {lastEvent.event_type}{lastEvent.playerName ? ` · ${lastEvent.playerName}` : ''}</div>
+            <div style={m.lastEventBar}>
+              ✓ {lastEvent.event_type}
+              {lastEvent.playerName ? ` · ${lastEvent.playerName}` : ''}
+            </div>
           )}
         </div>
 
+        {/* Bottom bar */}
         <div style={m.bottomBar}>
           <button style={m.undoBtn} onClick={handleUndo}>↩{undoMsg}</button>
           <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>
@@ -590,6 +770,7 @@ function LiveMatch() {
   return (
     <div style={s.page}>
       <LiberoPrompt />
+
       <div style={s.scoreHeader}>
         <div style={s.scoreBlock}>
           <div style={s.teamLabel}>{ourTeamName}</div>
@@ -598,11 +779,21 @@ function LiveMatch() {
         </div>
         <div style={s.scoreMid}>
           <div style={s.setLabel}>Set {score.current_set}</div>
-          <div>{weAreServing ? <span style={s.servingUs}>● We are serving</span> : <span style={s.servingThem}>● They are serving</span>}</div>
-          {(score.sets||[]).map(st => <div key={st.set} style={s.setPill}>S{st.set}: {st.us}–{st.them}</div>)}
+          <div>
+            {weAreServing
+              ? <span style={s.servingUs}>● We are serving</span>
+              : <span style={s.servingThem}>● They are serving</span>}
+          </div>
+          {(score.sets||[]).map(st => (
+            <div key={st.set} style={s.setPill}>S{st.set}: {st.us}–{st.them}</div>
+          ))}
           <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
-            <button style={s.ourBtn} onClick={() => handleEvent('our_point')}>+ {ourTeamName}</button>
-            <button style={s.opponentBtn} onClick={() => handleEvent('opponent_point')}>+ {opponentName}</button>
+            <button style={s.ourBtn} onClick={() => handleEvent('our_point')}>
+              + {ourTeamName}
+            </button>
+            <button style={s.opponentBtn} onClick={() => handleEvent('opponent_point')}>
+              + {opponentName}
+            </button>
           </div>
         </div>
         <div style={s.scoreBlock}>
@@ -633,7 +824,10 @@ function LiveMatch() {
             <div style={s.rotNetLine2} />
             <div style={s.rotationRow}>
               {[3,2,1].map(i => (
-                <div key={i} style={{ ...s.rotationSlot, ...(positions[i]?.id===selectedPlayer?.id?s.rotationSlotSelected:{}) }}>
+                <div key={i} style={{
+                  ...s.rotationSlot,
+                  ...(positions[i]?.id===selectedPlayer?.id ? s.rotationSlotSelected : {})
+                }}>
                   <div style={s.rotPosLabel}>P{i+1}</div>
                   <div style={s.rotName}>{positions[i]?.name?.split(' ')[0] ?? '—'}</div>
                 </div>
@@ -642,7 +836,11 @@ function LiveMatch() {
             <div style={s.rotDivider} />
             <div style={s.rotationRow}>
               {[4,5,0].map(i => (
-                <div key={i} style={{ ...s.rotationSlot, ...(i===0?s.rotationSlotServer:{}), ...(positions[i]?.id===selectedPlayer?.id?s.rotationSlotSelected:{}) }}>
+                <div key={i} style={{
+                  ...s.rotationSlot,
+                  ...(i===0 ? s.rotationSlotServer : {}),
+                  ...(positions[i]?.id===selectedPlayer?.id ? s.rotationSlotSelected : {})
+                }}>
                   <div style={s.rotPosLabel}>P{i===0?1:i+1}</div>
                   <div style={s.rotName}>{positions[i]?.name?.split(' ')[0] ?? '—'}</div>
                   {i===0&&weAreServing&&<div style={s.rotServeTag}>SRV</div>}
@@ -658,30 +856,51 @@ function LiveMatch() {
             return (
               <div key={i} style={s.playerSlot}>
                 <button
-                  style={{ ...s.playerBtn, ...(selectedPlayer?.id===player.id?s.playerBtnActive:{}), ...(subMode?s.playerBtnSubOut:{}), ...(isServer&&weAreServing?s.playerBtnServer:{}) }}
-                  onClick={() => { if(subMode) handleSubOut(player); else setSelectedPlayer(selectedPlayer?.id===player.id?null:player); }}>
+                  style={{
+                    ...s.playerBtn,
+                    ...(selectedPlayer?.id===player.id ? s.playerBtnActive : {}),
+                    ...(subMode ? s.playerBtnSubOut : {}),
+                    ...(isServer&&weAreServing ? s.playerBtnServer : {}),
+                  }}
+                  onClick={() => {
+                    if (subMode) handleSubOut(player);
+                    else setSelectedPlayer(selectedPlayer?.id===player.id ? null : player);
+                  }}>
                   <div style={s.playerBtnTop}>
                     <span style={s.posTag}>P{i===0?1:i+1}</span>
                     {isServer&&weAreServing&&<span style={s.servTag}>SRV</span>}
-                    {activeLiberoSwap?.libero.id===player.id&&<span style={s.libTag}>LIB</span>}
+                    {activeLiberoSwap?.libero.id===player.id&&
+                      <span style={s.libTag}>LIB</span>}
                   </div>
-                  <span style={s.jerseyNum}>{player.jersey_number?`#${player.jersey_number}`:'—'}</span>
+                  <span style={s.jerseyNum}>
+                    {player.jersey_number?`#${player.jersey_number}`:'—'}
+                  </span>
                   <span style={s.playerName}>{player.name}</span>
                   <span style={s.playerPos}>{player.position??''}</span>
                 </button>
-                {!subMode&&<button style={s.subBtn} onClick={() => handleSubOut(player)}>⇄</button>}
+                {!subMode && (
+                  <button style={s.subBtn} onClick={() => handleSubOut(player)}>⇄</button>
+                )}
               </div>
             );
           })}
 
           {bench.length > 0 && (
             <>
-              <div style={{...s.panelTitle, marginTop:'12px'}}>{subMode?'👇 Tap to sub in':'Bench'}</div>
+              <div style={{...s.panelTitle, marginTop:'12px'}}>
+                {subMode ? '👇 Tap to sub in' : 'Bench'}
+              </div>
               {bench.map(p => (
                 <button key={p.id}
-                  style={{ ...s.playerBtn, ...s.benchBtn, ...(subMode?s.benchBtnActive:{}) }}
-                  onClick={() => subMode&&handleSubIn(p)}>
-                  <span style={s.jerseyNum}>{p.jersey_number?`#${p.jersey_number}`:'—'}</span>
+                  style={{
+                    ...s.playerBtn,
+                    ...s.benchBtn,
+                    ...(subMode ? s.benchBtnActive : {}),
+                  }}
+                  onClick={() => subMode && handleSubIn(p)}>
+                  <span style={s.jerseyNum}>
+                    {p.jersey_number?`#${p.jersey_number}`:'—'}
+                  </span>
                   <span style={s.playerName}>{p.name}</span>
                   <span style={s.playerPos}>{p.position??''}</span>
                 </button>
@@ -692,7 +911,9 @@ function LiveMatch() {
 
         <div style={s.eventPanel}>
           <div style={s.panelTitle}>
-            {subMode?'Tap ⇄ to select who comes off':selectedPlayer?`Logging for ${selectedPlayer.name}`:'Tap a player on the left'}
+            {subMode ? 'Tap ⇄ to select who comes off'
+              : selectedPlayer ? `Logging for ${selectedPlayer.name}`
+              : 'Tap a player on the left'}
           </div>
           {EVENT_GROUPS.map(group => {
             const isServeGroup = group.label === 'Serve';
@@ -701,24 +922,36 @@ function LiveMatch() {
               <div key={group.label} style={s.eventGroup}>
                 <div style={s.eventGroupLabel}>
                   {group.label}
-                  {isServeGroup&&serverPlayer&&<span style={s.serverOnlyHint}> — {serverPlayer.name} only</span>}
+                  {isServeGroup&&serverPlayer&&
+                    <span style={s.serverOnlyHint}> — {serverPlayer.name} only</span>}
                 </div>
                 <div style={s.eventGrid}>
                   {group.events.map(ev => (
                     <button key={ev.type}
-                      style={{ ...s.eventBtn, background: ev.color, opacity:(selectedPlayer&&!subMode&&canUseGroup)?1:0.3, cursor:(selectedPlayer&&!subMode&&canUseGroup)?'pointer':'not-allowed' }}
-                      onClick={() => !subMode&&handleEvent(ev.type)}>
+                      style={{
+                        ...s.eventBtn,
+                        background: ev.color,
+                        opacity: (selectedPlayer&&!subMode&&canUseGroup) ? 1 : 0.3,
+                        cursor: (selectedPlayer&&!subMode&&canUseGroup)
+                          ? 'pointer' : 'not-allowed',
+                      }}
+                      onClick={() => !subMode && handleEvent(ev.type)}>
                       <span>{ev.label}</span>
-                      {ev.points==='us'&&<span style={s.pointHint}>+1 {ourTeamName}</span>}
-                      {ev.points==='them'&&<span style={s.pointHint}>+1 {opponentName}</span>}
+                      {ev.points==='us' &&
+                        <span style={s.pointHint}>+1 {ourTeamName}</span>}
+                      {ev.points==='them' &&
+                        <span style={s.pointHint}>+1 {opponentName}</span>}
                     </button>
                   ))}
                 </div>
               </div>
             );
           })}
-          {lastEvent&&(
-            <div style={s.lastEvent}>Last: <strong>{lastEvent.event_type}</strong>{lastEvent.playerName&&` · ${lastEvent.playerName}`}</div>
+          {lastEvent && (
+            <div style={s.lastEvent}>
+              Last: <strong>{lastEvent.event_type}</strong>
+              {lastEvent.playerName && ` · ${lastEvent.playerName}`}
+            </div>
           )}
         </div>
       </div>
@@ -726,6 +959,7 @@ function LiveMatch() {
   );
 }
 
+// ── DESKTOP STYLES ────────────────────────────────────────────
 const s = {
   page: { background: '#0f0f1a', minHeight: '100vh', color: 'white' },
   loading: { padding: '40px', color: 'white', background: '#0f0f1a', minHeight: '100vh' },
@@ -834,11 +1068,12 @@ const s = {
   empty: { color: '#555', fontSize: '13px' },
 };
 
+// ── MOBILE STYLES ─────────────────────────────────────────────
 const m = {
   page: { background: '#0f0f1a', height: '100vh', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   scoreBar: { display: 'flex', alignItems: 'center', background: '#1a1a2e', padding: '8px 10px', borderBottom: '1px solid #2a2a4a', flexShrink: 0 },
   scoreTeamBlock: { flex: 1, textAlign: 'center' },
-  scoreTeamName: { fontSize: '9px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px', margin: '0 auto' },
+  scoreTeamName: { fontSize: '9px', color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px', margin: '0 auto' },
   scoreBig: { fontSize: '34px', fontWeight: '800', color: '#F5C800', lineHeight: 1 },
   scoreSets: { fontSize: '9px', color: '#888', marginTop: '1px' },
   scoreMid: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '120px' },
@@ -851,26 +1086,28 @@ const m = {
   courtRow: { display: 'flex', gap: '5px', marginBottom: '5px' },
   courtBaseline: { height: '1px', background: '#2a2a4a', marginBottom: '3px' },
   courtBaselineLabel: { textAlign: 'center', fontSize: '8px', color: '#444', letterSpacing: '0.1em', marginBottom: '3px' },
-  courtTile: { flex: 1, height: '68px', background: '#1e1e38', border: '2px solid #2a2a4a', borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: '3px' },
+  courtTileWrapper: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '3px' },
+  courtTile: { height: '64px', background: '#1e1e38', border: '2px solid #2a2a4a', borderRadius: '10px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: '3px', width: '100%' },
   courtTileSelected: { background: '#1a3a6e', border: '2px solid #4a90d9' },
   courtTileServer: { border: '2px solid #2ecc71', background: '#0a1a0a' },
-  courtTileSubMode: { border: '2px solid #e74c3c' },
   courtTileEmpty: { background: '#111120', border: '2px dashed #222', cursor: 'default' },
   courtTileEmptyText: { color: '#333', fontSize: '16px' },
   courtTilePos: { position: 'absolute', top: '3px', left: '5px', fontSize: '8px', color: '#555', fontWeight: '700' },
-  courtTileInitials: { fontSize: '17px', fontWeight: '800', color: '#f0f0f0', lineHeight: 1 },
+  courtTileInitials: { fontSize: '16px', fontWeight: '800', color: '#f0f0f0', lineHeight: 1 },
   courtTileNum: { fontSize: '10px', color: '#F5C800', fontWeight: '600', marginTop: '2px' },
   libBadge: { position: 'absolute', top: '2px', right: '3px', fontSize: '7px', color: '#F5C800', fontWeight: '700', background: '#1a1a00', padding: '1px 3px', borderRadius: '3px' },
+  tileSubBtn: { height: '22px', background: '#2a2a4a', color: '#888', border: '1px solid #3a3a5a', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', width: '100%' },
+  tileSubBtnActive: { background: '#e74c3c', color: 'white', border: '1px solid #e74c3c' },
   benchStrip: { background: '#0f0f1a', padding: '5px 10px', borderTop: '1px solid #1a1a2e', flexShrink: 0 },
-  benchLabel: { fontSize: '8px', color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' },
+  benchLabel: { fontSize: '9px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' },
   benchRow: { display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' },
-  benchTile: { width: '44px', height: '44px', background: '#111120', border: '1px solid #1e1e38', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.6 },
-  benchTileActive: { opacity: 1, border: '2px solid #2ecc71', background: '#0a2a0a', cursor: 'pointer' },
-  benchInitials: { fontSize: '12px', fontWeight: '700', color: '#ccc' },
-  benchNum: { fontSize: '8px', color: '#888', marginTop: '1px' },
-  cancelSubBtn: { padding: '6px 10px', background: 'transparent', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' },
+  benchTile: { width: '44px', height: '44px', background: '#111120', border: '1px solid #1e1e38', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.6 },
+  benchTileActive: { width: '52px', height: '52px', background: '#0a2a0a', border: '2px solid #2ecc71', borderRadius: '8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+  benchInitials: { fontSize: '13px', fontWeight: '700', color: '#f0f0f0' },
+  benchNum: { fontSize: '9px', color: '#F5C800', marginTop: '1px' },
+  cancelSubBtn: { padding: '6px 12px', background: 'transparent', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' },
   statSection: { flex: 1, display: 'flex', flexDirection: 'column', padding: '6px 10px', overflow: 'hidden' },
-  statBanner: { fontSize: '12px', color: '#ccc', marginBottom: '6px', minHeight: '18px', display: 'flex', alignItems: 'center', gap: '5px' },
+  statBanner: { fontSize: '12px', color: '#ccc', marginBottom: '6px', minHeight: '20px', display: 'flex', alignItems: 'center', gap: '5px' },
   clearBtn: { background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '14px', marginLeft: '4px', padding: '0' },
   statGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px', flex: 1 },
   statBtn: { border: 'none', borderRadius: '10px', cursor: 'pointer', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6px 4px' },
