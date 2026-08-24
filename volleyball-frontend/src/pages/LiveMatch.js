@@ -246,6 +246,7 @@ function LiveMatch() {
 
     await apiLogEvent(matchId, event);
     setLastEvent({ ...event, playerName: selectedPlayer?.name });
+    const eventPlayer = selectedPlayer; // capture before clearing
     setSelectedPlayer(null);
     fetchScore();
 
@@ -256,7 +257,6 @@ function LiveMatch() {
 
     if (['kill', 'ace', 'our_point', 'kill_block'].includes(eventType)) {
       if (!weAreServing) {
-        // Sideout — rotate and check libero swap out
         const { positions: newPos, bench: newBench, swap: newSwap } =
           doRotation(positions, bench, activeLiberoSwap);
         setPositions(newPos);
@@ -268,13 +268,12 @@ function LiveMatch() {
     }
 
     if (eventType === 'serve_error') {
-      // If middle in P1 serve errored — prompt libero swap
-      if (selectedPlayer && isMiddle(selectedPlayer) && serverPlayer?.id === selectedPlayer.id) {
-        triggerLiberoPrompt(selectedPlayer, 0);
+      if (eventPlayer && isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id) {
+        triggerLiberoPrompt(eventPlayer, 0);
       }
       setWeAreServing(false);
       return;
-    }
+    }   
   };
 
   const handleUndo = async () => {
