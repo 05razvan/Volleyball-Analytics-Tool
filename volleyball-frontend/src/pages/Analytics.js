@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getTeams, getTeamAnalytics, getTeamTrend, getPlayerAnalytics,
-         getPlayerMatchHistory, getTopPerformers, getMatchCount } from '../api';
+         getPlayerMatchHistory, getTopPerformers, getMatchCount,
+         getTeamMatchHistory } from '../api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -56,6 +57,7 @@ function Analytics() {
   const [activePlayer, setActivePlayer] = useState(null);
   const [playerStats, setPlayerStats] = useState(null);
   const [playerHistory, setPlayerHistory] = useState([]);
+  const [teamHistory, setTeamHistory] = useState([]);
   const [view, setView] = useState('team');
   const [mobile, setMobile] = useState(window.innerWidth <= 600);
 
@@ -78,6 +80,7 @@ function Analytics() {
       .then(res => setTrend(res.data));
     getTopPerformers(selectedTeam).then(res => setTopPerformers(res.data));
     getMatchCount(selectedTeam).then(res => setMatchCount(res.data.count));
+    getTeamMatchHistory(selectedTeam).then(res => setTeamHistory(res.data)).catch(() => {});
     setActivePlayer(null);
     setPlayerStats(null);
     setPlayerHistory([]);
@@ -105,6 +108,7 @@ function Analytics() {
             setSelectedTeam(e.target.value);
             setView('team');
             setActivePlayer(null);
+            setTeamHistory([]);
           }}>
           <option value="">Select a team</option>
           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -140,6 +144,7 @@ function Analytics() {
         <p style={styles.empty}>Select a team to view analytics.</p>
       )}
 
+      {/* ── TEAM VIEW ── */}
       {selectedTeam && view === 'team' && teamStats && (
         <>
           <h3 style={styles.sectionTitle}>Team overview</h3>
@@ -165,7 +170,7 @@ function Analytics() {
 
           {trend.length > 1 && (
             <>
-              <h3 style={styles.sectionTitle}>Trends — last {trend.length} matches</h3>
+              <h3 style={styles.sectionTitle}>Trends</h3>
               <div style={mobile ? styles.chartColStack : styles.chartRow}>
                 <div style={styles.chartCard}>
                   <div style={styles.chartTitle}>Kill % per match</div>
@@ -202,9 +207,39 @@ function Analytics() {
           {trend.length <= 1 && (
             <p style={styles.empty}>Complete more matches to see trend charts.</p>
           )}
+
+          {/* Match history */}
+          {teamHistory.length > 0 && (
+            <>
+              <h3 style={styles.sectionTitle}>Match history</h3>
+              <div style={styles.table}>
+                <div style={{ ...styles.tableHeader, gridTemplateColumns: '1fr 1.8fr 0.5fr 0.7fr' }}>
+                  <span>Date</span>
+                  <span>Opponent</span>
+                  <span>Result</span>
+                  <span>Sets</span>
+                </div>
+                {teamHistory.map(h => (
+                  <div key={h.match_id}
+                    style={{ ...styles.tableRow, gridTemplateColumns: '1fr 1.8fr 0.5fr 0.7fr' }}>
+                    <span style={{ color: '#888' }}>{h.date}</span>
+                    <span style={{ color: '#f0f0f0' }}>{h.opponent}</span>
+                    <span style={{
+                      fontWeight: '700',
+                      color: h.result === 'W' ? '#2ecc71' : '#e74c3c'
+                    }}>
+                      {h.result}
+                    </span>
+                    <span style={{ color: '#F5C800' }}>{h.our_sets}–{h.their_sets}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
+      {/* ── PLAYER VIEW ── */}
       {selectedTeam && view === 'player' && teamStats && (
         <>
           <h3 style={styles.sectionTitle}>Select a player</h3>
@@ -231,7 +266,7 @@ function Analytics() {
               <div style={styles.statRow}>
                 <StatCard label="Kill %" value={playerStats.kill_pct} unit="%" />
                 <StatCard label="Serve %" value={playerStats.serve_pct} unit="%" color="#3498db" />
-                <StatCard label="Serve errors" value={playerStats.serve_error_rate} unit="%" color="#e74c3c" />
+                <StatCard label="Serve err %" value={playerStats.serve_error_rate ?? 0} unit="%" color="#e74c3c" />
               </div>
               <div style={styles.statRow}>
                 <StatCard label="Kills" value={playerStats.kills} color="#2ecc71" />
@@ -292,7 +327,7 @@ function Analytics() {
                 <>
                   <h3 style={styles.sectionTitle}>Match history</h3>
                   <div style={styles.table}>
-                    <div style={styles.tableHeader}>
+                    <div style={{ ...styles.tableHeader, gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)' }}>
                       <span>Date</span>
                       <span>Res</span>
                       <span>K</span>
@@ -303,9 +338,13 @@ function Analytics() {
                       <span>K%</span>
                     </div>
                     {playerHistory.map(h => (
-                      <div key={h.match_id} style={styles.tableRow}>
+                      <div key={h.match_id}
+                        style={{ ...styles.tableRow, gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)' }}>
                         <span style={{ color: '#888' }}>{h.date}</span>
-                        <span style={{ fontWeight: '600' }}>{h.result}</span>
+                        <span style={{
+                          fontWeight: '600',
+                          color: h.result === 'W' ? '#2ecc71' : '#e74c3c'
+                        }}>{h.result}</span>
                         <span>{h.kills}</span>
                         <span>{h.kill_blocks ?? 0}</span>
                         <span>{h.aces}</span>
@@ -364,7 +403,7 @@ const styles = {
   topLabel: { fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' },
   topName: { fontSize: '14px', fontWeight: '700', color: '#f0f0f0', marginBottom: '2px' },
   topValue: { fontSize: '13px', color: '#F5C800', fontWeight: '600' },
-  chartRow: { display: 'flex', gap: '12px', marginBottom: '0', flexWrap: 'wrap' },
+  chartRow: { display: 'flex', gap: '12px', flexWrap: 'wrap' },
   chartColStack: { display: 'flex', flexDirection: 'column', gap: '12px' },
   chartCard: {
     flex: 1, minWidth: '200px', background: '#1a1a1a', border: '1px solid #2a2a2a',
@@ -390,12 +429,12 @@ const styles = {
     borderRadius: '10px', overflow: 'hidden', marginBottom: '16px',
   },
   tableHeader: {
-    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)',
+    display: 'grid',
     padding: '8px 12px', background: '#1e1e1e', fontSize: '10px',
     fontWeight: '600', color: '#F5C800', textTransform: 'uppercase',
   },
   tableRow: {
-    display: 'grid', gridTemplateColumns: '1.2fr 0.7fr repeat(6, 0.5fr)',
+    display: 'grid',
     padding: '8px 12px', fontSize: '12px',
     borderTop: '1px solid #222', color: '#ccc',
   },

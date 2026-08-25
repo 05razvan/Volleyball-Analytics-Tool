@@ -217,3 +217,35 @@ def get_lineup(match_id: int, db: Session = Depends(get_db)):
 def get_sets(match_id: int, db: Session = Depends(get_db)):
     sets = db.query(SetScore).filter(SetScore.match_id == match_id).all()
     return [{"set": s.set_number, "us": s.our_score, "them": s.opponent_score} for s in sets]
+
+@router.get("/team/{team_id}/history")
+def team_match_history(team_id: int, db: Session = Depends(get_db)):
+    matches = db.query(Match).filter(
+        (Match.our_team_id == team_id),
+        Match.status == 'completed'
+    ).order_by(Match.date.desc()).all()
+
+    history = []
+    for match in matches:
+        sets = db.query(SetScore).filter(SetScore.match_id == match.id).all()
+        our_sets = sum(1 for s in sets if s.our_score > s.opponent_score)
+        their_sets = sum(1 for s in sets if s.opponent_score > s.our_score)
+        
+        # figure out opponent name
+        if match.our_team_id == match.home_team_id:
+            opp = db.query(Team).filter(Team.id == match.away_team_id).first()
+        else:
+            opp = db.query(Team).filter(Team.id == match.home_team_id).first()
+
+        history.append({
+            "match_id": match.id,
+            "date": match.date.strftime("%d %b %Y") if match.date else "",
+            "opponent": opp.name if opp else "Unknown",
+            "location": match.location or "",
+            "our_sets": our_sets,
+            "their_sets": their_sets,
+            "result": "W" if our_sets > their_sets else "L",
+            "sets": [{"set": s.set_number, "us": s.our_score, "them": s.opponent_score} for s in sorted(sets, key=lambda x: x.set_number)],
+        })
+
+    return history
