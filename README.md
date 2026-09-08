@@ -2,6 +2,8 @@
 
 React and FastAPI match tracking and analytics for Glasgow University Volleyball Club.
 
+Live frontend: https://volleyball-analytics-tool.vercel.app
+
 ## Local setup
 
 Backend:
