@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import engine, SessionLocal
 from models import Base, User
 from auth import hash_password
-from routers import teams, players, matches, availability, analytics, auth
+from routers import teams, players, matches, availability, analytics, auth, join_requests
 
 Base.metadata.create_all(bind=engine)
 
@@ -48,6 +48,7 @@ app.include_router(players.router)
 app.include_router(matches.router)
 app.include_router(availability.router)
 app.include_router(analytics.router)
+app.include_router(join_requests.router)
 
 @app.get("/")
 def root():

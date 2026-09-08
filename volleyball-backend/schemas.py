@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -72,6 +72,10 @@ class SetScoreResponse(BaseModel):
     opponent_score: int
     class Config:
         from_attributes = True
+
+class MatchLineupUpdate(BaseModel):
+    on_court: List[int]
+    bench: List[int] = Field(default_factory=list)
 
 class AvailabilityCreate(BaseModel):
     player_id: int

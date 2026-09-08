@@ -15,8 +15,15 @@ const authFetch = async (path, options = {}) => {
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {}),
   });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
+  const payload = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = payload?.detail;
+    const message = typeof detail === 'string'
+      ? detail
+      : `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+  return payload;
 };
 
 const apiGetScore = (matchId) => authFetch(`/matches/${matchId}/score`);
@@ -86,6 +93,8 @@ function LiveMatch() {
   const [lastEvent, setLastEvent] = useState(null);
   const [undoMsg, setUndoMsg] = useState('');
   const [dragging, setDragging] = useState(null);
+  const [actionError, setActionError] = useState('');
+  const [savingLineup, setSavingLineup] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setMobile(window.innerWidth <= 700);
@@ -144,12 +153,21 @@ function LiveMatch() {
   };
 
   const handleServeSelect = async (weServe) => {
+    if (savingLineup) return;
     setWeAreServing(weServe);
-    await apiSaveLineup(matchId, {
-      on_court: positions.filter(Boolean).map(p => p.id),
-      bench: bench.map(p => p.id),
-    });
-    setPhase('tracking');
+    setActionError('');
+    setSavingLineup(true);
+    try {
+      await apiSaveLineup(matchId, {
+        on_court: positions.map(p => p.id),
+        bench: bench.map(p => p.id),
+      });
+      setPhase('tracking');
+    } catch (error) {
+      setActionError(`Could not save the lineup: ${error.message}`);
+    } finally {
+      setSavingLineup(false);
+    }
   };
 
   const isMiddle = (player) => player?.position === 'Middle Blocker';
@@ -483,13 +501,16 @@ function LiveMatch() {
             {(score?.current_set ?? 1) === 5 ? 'Set 5 — Coin toss' : `Set ${score?.current_set ?? 1}`}
           </div>
           <div style={s.serveSelectSub}>Who serves first?</div>
+          {actionError && <div role="alert" style={s.actionError}>{actionError}</div>}
           <div style={s.serveSelectBtns}>
-            <button style={s.serveBtn} onClick={() => handleServeSelect(true)}>
-              🏐 {ourTeamName} serves first
+            <button style={s.serveBtn} disabled={savingLineup}
+              onClick={() => handleServeSelect(true)}>
+              🏐 {savingLineup ? 'Saving lineup…' : `${ourTeamName} serves first`}
             </button>
             <button style={{ ...s.serveBtn, ...s.serveBtnAlt }}
+              disabled={savingLineup}
               onClick={() => handleServeSelect(false)}>
-              {opponentName} serves first
+              {savingLineup ? 'Saving lineup…' : `${opponentName} serves first`}
             </button>
           </div>
         </div>
@@ -999,6 +1020,7 @@ const s = {
   serveSelectPage: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: '16px', padding: '40px' },
   serveSelectTitle: { fontSize: '22px', fontWeight: '700', color: '#F5C800' },
   serveSelectSub: { fontSize: '15px', color: '#aaa', marginBottom: '8px' },
+  actionError: { width: '100%', maxWidth: '420px', padding: '10px 12px', color: '#ffb4b4', background: '#3a1717', border: '1px solid #7d2929', borderRadius: '8px', fontSize: '13px', lineHeight: 1.4, textAlign: 'center' },
   serveSelectBtns: { display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' },
   serveBtn: { padding: '16px', background: '#1a1a2e', color: 'white', border: '2px solid #F5C800', borderRadius: '12px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
   serveBtnAlt: { border: '2px solid #555', background: '#111' },

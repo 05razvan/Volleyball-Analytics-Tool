@@ -2,9 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Match, MatchEvent, SetScore, Team, Player
-from schemas import MatchCreate, MatchResponse, MatchEventCreate, MatchEventResponse
+from schemas import (
+    MatchCreate,
+    MatchEventCreate,
+    MatchEventResponse,
+    MatchLineupUpdate,
+    MatchResponse,
+)
 from auth import get_current_user, require_coach_or_above, get_optional_user
 from typing import List
+from datetime import datetime
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -158,11 +165,10 @@ def get_events(match_id: int, db: Session = Depends(get_db)):
         MatchEvent.match_id == match_id
     ).order_by(MatchEvent.timestamp).all()
 
-from models import Match, MatchEvent, SetScore, Team, Player, MatchLineup
-from datetime import datetime
+from models import MatchLineup
 
 @router.post("/{match_id}/lineup")
-def set_lineup(match_id: int, data: dict,
+def set_lineup(match_id: int, data: MatchLineupUpdate,
                db: Session = Depends(get_db),
                current_user=Depends(get_current_user)):
     match = db.query(Match).filter(Match.id == match_id).first()
@@ -170,20 +176,37 @@ def set_lineup(match_id: int, data: dict,
         raise HTTPException(status_code=404, detail="Match not found")
     check_match_permission(match, current_user, db)
 
+    if len(data.on_court) != 6:
+        raise HTTPException(status_code=400,
+            detail="A lineup must contain exactly 6 on-court players")
+
+    player_ids = data.on_court + data.bench
+    if len(player_ids) != len(set(player_ids)):
+        raise HTTPException(status_code=400,
+            detail="A player cannot appear more than once in a lineup")
+
+    valid_ids = {
+        player.id for player in db.query(Player).filter(
+            Player.id.in_(player_ids),
+            Player.team_id == match.our_team_id,
+        ).all()
+    }
+    invalid_ids = sorted(set(player_ids) - valid_ids)
+    if invalid_ids:
+        raise HTTPException(status_code=400,
+            detail=f"Players do not belong to the tracking team: {invalid_ids}")
+
     # clear existing lineup
     db.query(MatchLineup).filter(
         MatchLineup.match_id == match_id).delete()
 
-    on_court = data.get("on_court", [])
-    bench = data.get("bench", [])
-
-    for pid in on_court:
+    for pid in data.on_court:
         db.add(MatchLineup(
             match_id=match_id, player_id=pid,
             is_on_court=True,
             updated_at=datetime.utcnow()
         ))
-    for pid in bench:
+    for pid in data.bench:
         db.add(MatchLineup(
             match_id=match_id, player_id=pid,
             is_on_court=False,
