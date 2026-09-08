@@ -401,6 +401,9 @@ def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
     tracker = get_tracker_state(match_id, db)
     events = db.query(MatchEvent).filter_by(match_id=match_id).order_by(
         MatchEvent.timestamp.desc()).limit(100).all()
+    event_contexts = {context.event_id: context for context in
+        db.query(MatchEventContext).filter(MatchEventContext.event_id.in_(
+            [event.id for event in events])).all()} if events else {}
     player_ids = {event.player_id for event in events if event.player_id}
     player_names = {player.id: player.name for player in db.query(Player).filter(
         Player.id.in_(player_ids)).all()} if player_ids else {}
@@ -414,6 +417,8 @@ def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
             "player_id": event.player_id,
             "player_name": player_names.get(event.player_id),
             "event_type": event.event_type,
+            "pass_rating": event_contexts[event.id].pass_rating
+                if event.id in event_contexts else None,
             "set_number": event.set_number,
             "timestamp": event.timestamp,
         } for event in events],

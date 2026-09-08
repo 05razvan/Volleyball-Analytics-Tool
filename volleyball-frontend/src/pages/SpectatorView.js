@@ -16,6 +16,13 @@ const EVENT_LABELS = {
   opponent_point: { label: 'GUVC Error',   emoji: '🔴', color: '#e74c3c', point: 'them' },
 };
 
+const PASS_LABELS = [
+  { label: 'Pass Error', emoji: '❌', color: '#c0392b' },
+  { label: 'Poor Pass', emoji: '⚠️', color: '#d35400' },
+  { label: 'Good Pass', emoji: '👍', color: '#2980b9' },
+  { label: 'Perfect Pass', emoji: '⭐', color: '#27ae60' },
+];
+
 function SpectatorView() {
   const { matchId } = useParams();
   const [score, setScore] = useState(null);
@@ -217,9 +224,11 @@ function SpectatorView() {
           <div style={styles.feedTitle}>Live feed</div>
           <div style={styles.feedList}>
             {events.map((event, i) => {
-              const info = EVENT_LABELS[event.event_type] ?? {
+              const info = event.event_type === 'pass' && PASS_LABELS[event.pass_rating]
+                ? PASS_LABELS[event.pass_rating]
+                : EVENT_LABELS[event.event_type] ?? {
                 label: event.event_type, emoji: '•', color: '#888', point: null,
-              };
+                };
               const playerName = event.player_id
                 ? (players[event.player_id] ?? `Player ${event.player_id}`)
                 : null;

@@ -67,6 +67,13 @@ const EVENT_GROUPS = [
 
 const ALL_EVENTS = EVENT_GROUPS.flatMap(g => g.events);
 
+const PASS_RATINGS = [
+  { rating: 0, label: 'Pass Error', shortLabel: 'Error', emoji: '❌', color: '#c0392b' },
+  { rating: 1, label: 'Poor Pass', shortLabel: 'Poor', emoji: '⚠️', color: '#d35400' },
+  { rating: 2, label: 'Good Pass', shortLabel: 'Good', emoji: '👍', color: '#2980b9' },
+  { rating: 3, label: 'Perfect Pass', shortLabel: 'Perfect', emoji: '⭐', color: '#27ae60' },
+];
+
 function rotateClockwise(positions) {
   return [positions[1], positions[2], positions[3], positions[4], positions[5], positions[0]];
 }
@@ -899,11 +906,11 @@ function LiveMatch() {
             </button>
             {passingEnabled && (
               <div style={m.passGrid}>
-                {[0, 1, 2, 3].map(rating => (
-                  <button key={rating} style={m.passBtn}
+                {PASS_RATINGS.map(pass => (
+                  <button key={pass.rating} style={{ ...m.passBtn, background: pass.color }}
                     disabled={!selectedPlayer || eventSaving}
-                    onClick={() => selectedPlayer && handleEvent('pass', rating)}>
-                    Pass {rating}
+                    onClick={() => selectedPlayer && handleEvent('pass', pass.rating)}>
+                    <span>{pass.emoji}</span> {pass.shortLabel}
                   </button>
                 ))}
               </div>
@@ -1112,13 +1119,13 @@ function LiveMatch() {
           </button>
           {passingEnabled && (
             <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
-              {[0, 1, 2, 3].map(rating => (
-                <button key={rating} style={{ ...s.eventBtn, background: '#246b63',
+              {PASS_RATINGS.map(pass => (
+                <button key={pass.rating} style={{ ...s.eventBtn, background: pass.color,
                   opacity: selectedPlayer ? 1 : 0.3 }}
                   disabled={!selectedPlayer || eventSaving}
-                  onClick={() => handleEvent('pass', rating)}>
-                  <span>Pass {rating}</span>
-                  <span style={s.pointHint}>{['Error', 'Poor', 'Good', 'Perfect'][rating]}</span>
+                  onClick={() => handleEvent('pass', pass.rating)}>
+                  <span>{pass.emoji} {pass.label}</span>
+                  <span style={s.pointHint}>{pass.rating}/3</span>
                 </button>
               ))}
             </div>

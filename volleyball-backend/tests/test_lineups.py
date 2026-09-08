@@ -8,7 +8,13 @@ from fastapi import HTTPException
 
 from database import SessionLocal, engine
 from models import Base, Match, MatchLineup, Player, Team, User
-from routers.matches import log_event, save_tracker_state, set_lineup, undo_last_event
+from routers.matches import (
+    get_spectator_snapshot,
+    log_event,
+    save_tracker_state,
+    set_lineup,
+    undo_last_event,
+)
 from routers.analytics import home_away_analytics, rotation_analytics
 from schemas import MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
@@ -160,6 +166,24 @@ def test_rejects_invalid_pass_rating(lineup_data):
             rotation_number=1,
             pass_rating=4,
         ), db, admin)
+
+
+def test_spectator_snapshot_includes_pass_rating(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    event = log_event(match.id, MatchEventCreate(
+        match_id=match.id,
+        player_id=players[0].id,
+        event_type="pass",
+        set_number=1,
+        rotation_number=1,
+        we_are_serving=False,
+        pass_rating=3,
+    ), db, admin)
+
+    snapshot = get_spectator_snapshot(match.id, db)
+
+    assert snapshot["events"][0]["id"] == event.id
+    assert snapshot["events"][0]["pass_rating"] == 3
 
 
 def test_rotation_analytics_calculates_sideout_rate(lineup_data):
