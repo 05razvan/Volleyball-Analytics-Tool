@@ -78,3 +78,6 @@ export const promoteCaptain = (playerId) =>
   api.post(`/players/${playerId}/promote-captain`);
 export const getMatchSets = (matchId) => api.get(`/matches/${matchId}/sets`);
 export const getTeamMatchHistory = (teamId) => api.get(`/matches/team/${teamId}/history`);
+export const getRotationAnalytics = (teamId, lastN) =>
+  api.get(`/analytics/team/${teamId}/rotations${lastN ? `?last_n=${lastN}` : ''}`);
+export const getSubstitutions = (matchId) => api.get(`/matches/${matchId}/substitutions`);

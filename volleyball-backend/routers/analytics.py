@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from database import get_db
-from models import MatchEvent, Player, Match, SetScore, Team
+from models import MatchEvent, MatchEventContext, Player, Match, SetScore, Team
 from typing import Optional
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -29,6 +29,12 @@ def get_player_stats(player_id: int, db: Session,
     digs = sum(1 for e in events if e.event_type == "dig")
     assists = sum(1 for e in events if e.event_type == "assist")
     serves = sum(1 for e in events if e.event_type == "serve")
+    passes = [e for e in events if e.event_type == "pass"]
+    pass_contexts = db.query(MatchEventContext).filter(
+        MatchEventContext.event_id.in_([e.id for e in passes])
+    ).all() if passes else []
+    pass_ratings = [context.pass_rating for context in pass_contexts
+                    if context.pass_rating is not None]
 
 
     total_attacks = kills + spikes + errors
@@ -48,6 +54,9 @@ def get_player_stats(player_id: int, db: Session,
       "kill_pct": round((kills / total_attacks) * 100, 1) if total_attacks > 0 else 0,
       "serve_pct": round((aces / total_serves) * 100, 1) if total_serves > 0 else 0,
       "serve_error_rate": round((serve_errors / total_serves) * 100, 1) if total_serves > 0 else 0,
+      "attack_efficiency": round(((kills - errors) / total_attacks) * 100, 1) if total_attacks > 0 else 0,
+      "pass_average": round(sum(pass_ratings) / len(pass_ratings), 2) if pass_ratings else None,
+      "pass_count": len(pass_ratings),
       "total_attacks": total_attacks,
       "total_serves": total_serves,
     }
@@ -108,6 +117,9 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
     total_serves = sum(s["total_serves"] for s in player_stats)
     total_blocks = sum(s["blocks"] for s in player_stats)
     total_digs = sum(s["digs"] for s in player_stats)
+    pass_total = sum(s["pass_average"] * s["pass_count"] for s in player_stats
+                     if s["pass_average"] is not None)
+    pass_count = sum(s["pass_count"] for s in player_stats)
 
     return {
         "team_id": team_id,
@@ -116,6 +128,58 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
         "team_kill_block_pct": round((total_kill_blocks / total_attacks) * 100, 1) if total_attacks > 0 else 0,
         "team_serve_pct": round((total_aces / total_serves) * 100, 1) if total_serves > 0 else 0,
         "team_serve_error_rate": round((total_serve_errors / total_serves) * 100, 1) if total_serves > 0 else 0,
+        "team_pass_average": round(pass_total / pass_count, 2) if pass_count else None,
+        "team_pass_count": pass_count,
+    }
+
+@router.get("/team/{team_id}/rotations")
+def rotation_analytics(team_id: int, last_n: Optional[int] = None,
+                       db: Session = Depends(get_db)):
+    match_query = db.query(Match).filter(
+        Match.our_team_id == team_id,
+        Match.status == "completed",
+    ).order_by(Match.date.desc())
+    if last_n:
+        match_query = match_query.limit(last_n)
+    match_ids = [match.id for match in match_query.all()]
+
+    rotations = []
+    for number in range(1, 7):
+        rows = db.query(MatchEvent, MatchEventContext).join(
+            MatchEventContext, MatchEventContext.event_id == MatchEvent.id
+        ).filter(
+            MatchEvent.match_id.in_(match_ids),
+            MatchEventContext.rotation_number == number,
+        ).all() if match_ids else []
+        point_rows = [(event, context) for event, context in rows
+                      if event.event_type in {"kill", "ace", "our_point", "kill_block",
+                                              "serve_error", "opponent_point"}]
+        points_for = sum(1 for event, _ in point_rows
+                         if event.event_type in {"kill", "ace", "our_point", "kill_block"})
+        points_against = len(point_rows) - points_for
+        receive_rallies = [(event, context) for event, context in point_rows
+                           if not context.we_were_serving]
+        sideouts = sum(1 for event, _ in receive_rallies
+                       if event.event_type in {"kill", "our_point", "kill_block"})
+        rotations.append({
+            "rotation": number,
+            "points_for": points_for,
+            "points_against": points_against,
+            "point_difference": points_for - points_against,
+            "sideout_attempts": len(receive_rallies),
+            "sideouts": sideouts,
+            "sideout_pct": round(sideouts / len(receive_rallies) * 100, 1)
+                if receive_rallies else None,
+        })
+
+    total_attempts = sum(rotation["sideout_attempts"] for rotation in rotations)
+    total_sideouts = sum(rotation["sideouts"] for rotation in rotations)
+    return {
+        "sideout_pct": round(total_sideouts / total_attempts * 100, 1)
+            if total_attempts else None,
+        "sideouts": total_sideouts,
+        "sideout_attempts": total_attempts,
+        "rotations": rotations,
     }
 
 @router.get("/team/{team_id}/trend")

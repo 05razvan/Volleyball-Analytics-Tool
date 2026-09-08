@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 
@@ -22,41 +22,23 @@ function SpectatorView() {
   const [events, setEvents] = useState([]);
   const [players, setPlayers] = useState({});
   const [lineup, setLineup] = useState(null);
+  const [tracker, setTracker] = useState(null);
+  const [substitutions, setSubstitutions] = useState([]);
   const [error, setError] = useState(false);
-  const fetchedPlayerIds = useRef(new Set());
 
   const fetchAll = async () => {
     try {
-      const [scoreRes, eventsRes, lineupRes] = await Promise.all([
-        fetch(`${api_base}/matches/${matchId}/score`),
-        fetch(`${api_base}/matches/${matchId}/events`),
-        fetch(`${api_base}/matches/${matchId}/lineup`),
-      ]);
-      if (!scoreRes.ok) throw new Error();
-      const scoreData = await scoreRes.json();
-      const eventsData = await eventsRes.json();
-      const lineupData = lineupRes.ok ? await lineupRes.json() : null;
-      setScore(scoreData);
-      setEvents([...eventsData].reverse());
-      if (lineupData) setLineup(lineupData);
-
-      const unknownIds = eventsData
-        .map(e => e.player_id)
-        .filter(id => id && !fetchedPlayerIds.current.has(id));
-      const unique = [...new Set(unknownIds)];
-      if (unique.length > 0) {
-        unique.forEach(id => fetchedPlayerIds.current.add(id));
-        const fetched = await Promise.all(
-          unique.map(id =>
-            fetch(`${api_base}/players/${id}`)
-              .then(r => r.ok ? r.json() : null)
-              .catch(() => null)
-          )
-        );
-        const newPlayers = {};
-        fetched.forEach(p => { if (p) newPlayers[p.id] = p.name; });
-        setPlayers(prev => ({ ...prev, ...newPlayers }));
-      }
+      const response = await fetch(`${api_base}/matches/${matchId}/spectator`);
+      if (!response.ok) throw new Error();
+      const snapshot = await response.json();
+      setScore(snapshot.score);
+      setEvents(snapshot.events);
+      setLineup(snapshot.lineup);
+      setTracker(snapshot.tracker);
+      setSubstitutions(snapshot.substitutions || []);
+      setPlayers(Object.fromEntries(snapshot.events
+        .filter(event => event.player_id && event.player_name)
+        .map(event => [event.player_id, event.player_name])));
     } catch {
       setError(true);
     }
@@ -100,6 +82,7 @@ function SpectatorView() {
             ? <span style={styles.liveDot}>● LIVE</span>
             : <span style={styles.statusTag}>{score.status.toUpperCase()}</span>}
           <span style={styles.setInfo}>Set {score.current_set}</span>
+          {tracker && <span style={styles.setInfo}>Rotation {tracker.rotation_number}</span>}
         </div>
 
         <div style={styles.scoreRow}>
@@ -164,7 +147,7 @@ function SpectatorView() {
             <div style={styles.courtRow}>
               {[4,5,0].map(i => {
                 const p = lineup.on_court[i];
-                const isServer = i === 0;
+                const isServer = i === 0 && tracker?.we_are_serving;
                 return (
                   <div key={i} style={{
                     ...styles.courtSlot,
@@ -206,6 +189,25 @@ function SpectatorView() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Live feed */}
+      {substitutions.length > 0 && (
+        <div style={styles.feedCard}>
+          <div style={styles.feedTitle}>Substitutions</div>
+          <div style={styles.feedList}>
+            {[...substitutions].reverse().map(sub => (
+              <div key={sub.id} style={styles.feedItem}>
+                <span style={styles.feedEmoji}>⇄</span>
+                <div style={styles.feedContent}>
+                  <span style={styles.feedAction}>{sub.player_in_name} in</span>
+                  <span style={styles.feedPlayer}> · {sub.player_out_name} out</span>
+                  <span style={styles.feedSet}> S{sub.set_number} · R{sub.rotation_number}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

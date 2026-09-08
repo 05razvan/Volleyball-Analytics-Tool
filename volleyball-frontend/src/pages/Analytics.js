@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getTeams, getTeamAnalytics, getTeamTrend, getPlayerAnalytics,
          getPlayerMatchHistory, getTopPerformers, getMatchCount,
-         getTeamMatchHistory } from '../api';
+         getTeamMatchHistory, getRotationAnalytics } from '../api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -58,6 +58,7 @@ function Analytics() {
   const [playerStats, setPlayerStats] = useState(null);
   const [playerHistory, setPlayerHistory] = useState([]);
   const [teamHistory, setTeamHistory] = useState([]);
+  const [rotationStats, setRotationStats] = useState(null);
   const [view, setView] = useState('team');
   const [mobile, setMobile] = useState(window.innerWidth <= 600);
 
@@ -81,6 +82,7 @@ function Analytics() {
     getTopPerformers(selectedTeam).then(res => setTopPerformers(res.data));
     getMatchCount(selectedTeam).then(res => setMatchCount(res.data.count));
     getTeamMatchHistory(selectedTeam).then(res => setTeamHistory(res.data)).catch(() => {});
+    getRotationAnalytics(selectedTeam, n).then(res => setRotationStats(res.data));
     setActivePlayer(null);
     setPlayerStats(null);
     setPlayerHistory([]);
@@ -153,7 +155,40 @@ function Analytics() {
             <StatCard label="Kill block %" value={teamStats.team_kill_block_pct} unit="%" color="#9b59b6" />
             <StatCard label="Serve %" value={teamStats.team_serve_pct} unit="%" color="#3498db" />
             <StatCard label="Serve error rate" value={teamStats.team_serve_error_rate} unit="%" color="#e74c3c" />
+            <StatCard label="Side-out %" value={rotationStats?.sideout_pct ?? '—'}
+              unit={rotationStats?.sideout_pct == null ? '' : '%'} color="#2ecc71" />
+            <StatCard label="Pass average" value={teamStats.team_pass_average ?? '—'}
+              unit={teamStats.team_pass_average == null ? '' : '/3'} color="#1abc9c" />
           </div>
+
+          {rotationStats?.rotations?.some(rotation =>
+            rotation.points_for + rotation.points_against > 0) && (
+            <>
+              <h3 style={styles.sectionTitle}>Performance by rotation</h3>
+              <div style={styles.chartCard}>
+                <div style={styles.chartTitle}>Point difference by starting rotation</div>
+                <ResponsiveContainer width="100%" height={chartH}>
+                  <BarChart data={rotationStats.rotations}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                    <XAxis dataKey="rotation" tickFormatter={value => `R${value}`}
+                      tick={{ fontSize: 10, fill: '#888' }} />
+                    <YAxis tick={{ fontSize: 10, fill: '#888' }} width={30} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="point_difference" fill="#F5C800" name="Point difference" />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div style={styles.rotationGrid}>
+                  {rotationStats.rotations.map(rotation => (
+                    <div key={rotation.rotation} style={styles.rotationCard}>
+                      <strong style={{ color: '#F5C800' }}>R{rotation.rotation}</strong>
+                      <span>{rotation.points_for}–{rotation.points_against} points</span>
+                      <span>{rotation.sideout_pct == null ? 'No receptions' : `${rotation.sideout_pct}% side-out`}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {topPerformers && Object.values(topPerformers).some(v => v) && (
             <>
@@ -410,6 +445,8 @@ const styles = {
     borderRadius: '10px', padding: '14px', marginBottom: '12px',
   },
   chartTitle: { fontSize: '12px', fontWeight: '500', marginBottom: '10px', color: '#888' },
+  rotationGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '6px', marginTop: '10px' },
+  rotationCard: { display: 'flex', flexDirection: 'column', gap: '3px', padding: '8px', background: '#111', borderRadius: '7px', color: '#aaa', fontSize: '10px' },
   tooltip: {
     background: '#1e1e1e', border: '1px solid #333', borderRadius: '8px',
     padding: '8px 12px', fontSize: '12px',

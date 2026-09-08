@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 
@@ -10,8 +10,8 @@ DIVISIONS = [
 ]
 
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
-EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace", 
-               "serve_error", "assist", "opponent_point", "our_point"]
+EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace",
+               "serve_error", "assist", "opponent_point", "our_point", "pass"]
 
 class User(Base):
     __tablename__ = "users"
@@ -105,3 +105,36 @@ class MatchLineup(Base):
     player_id = Column(Integer, ForeignKey("players.id"))
     is_on_court = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class MatchTrackerState(Base):
+    __tablename__ = "match_tracker_states"
+    id = Column(Integer, primary_key=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, unique=True)
+    positions_json = Column(Text, nullable=False, default="[]")
+    bench_json = Column(Text, nullable=False, default="[]")
+    we_are_serving = Column(Boolean, nullable=False, default=False)
+    rotation_number = Column(Integer, nullable=False, default=1)
+    passing_enabled = Column(Boolean, nullable=False, default=False)
+    active_libero_swap_json = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class MatchEventContext(Base):
+    __tablename__ = "match_event_contexts"
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("match_events.id"), nullable=False, unique=True)
+    rotation_number = Column(Integer, nullable=False)
+    we_were_serving = Column(Boolean, nullable=False)
+    pass_rating = Column(Integer, nullable=True)
+    state_before_json = Column(Text, nullable=True)
+
+class MatchSubstitution(Base):
+    __tablename__ = "match_substitutions"
+    __table_args__ = (UniqueConstraint("match_id", "sequence", name="uq_match_sub_sequence"),)
+    id = Column(Integer, primary_key=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False)
+    set_number = Column(Integer, nullable=False)
+    sequence = Column(Integer, nullable=False)
+    player_out_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    player_in_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    rotation_number = Column(Integer, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)

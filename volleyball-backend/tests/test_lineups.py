@@ -8,8 +8,9 @@ from fastapi import HTTPException
 
 from database import SessionLocal, engine
 from models import Base, Match, MatchLineup, Player, Team, User
-from routers.matches import set_lineup
-from schemas import MatchLineupUpdate
+from routers.matches import log_event, save_tracker_state, set_lineup, undo_last_event
+from routers.analytics import rotation_analytics
+from schemas import MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
 @pytest.fixture()
@@ -113,3 +114,76 @@ def test_join_request_routes_are_registered():
     paths = set(app.openapi()["paths"])
     assert "/join-requests/" in paths
     assert "/join-requests/pending" in paths
+
+
+def test_event_undo_restores_persisted_tracker_state(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    ids = [player.id for player in players]
+    original = MatchTrackerStateUpdate(
+        positions=ids[:6], bench=ids[6:], we_are_serving=False,
+        rotation_number=1, passing_enabled=True,
+    )
+    save_tracker_state(match.id, original, db, admin)
+    event = log_event(match.id, MatchEventCreate(
+        match_id=match.id,
+        player_id=ids[0],
+        event_type="kill",
+        set_number=1,
+        rotation_number=1,
+        we_are_serving=False,
+        state_before=original.model_dump(),
+    ), db, admin)
+    save_tracker_state(match.id, MatchTrackerStateUpdate(
+        positions=ids[1:6] + ids[:1], bench=ids[6:], we_are_serving=True,
+        rotation_number=2, passing_enabled=True,
+    ), db, admin)
+
+    result = undo_last_event(match.id, db, admin)
+
+    assert result["event"]["id"] == event.id
+    assert result["restored_state"]["positions"] == ids[:6]
+    from models import MatchTrackerState
+    saved = db.query(MatchTrackerState).filter_by(match_id=match.id).one()
+    assert saved.rotation_number == 1
+    assert saved.we_are_serving is False
+
+
+def test_rejects_invalid_pass_rating(lineup_data):
+    db, admin, match, players, _ = lineup_data
+
+    with pytest.raises(HTTPException, match="Pass rating"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=players[0].id,
+            event_type="pass",
+            set_number=1,
+            rotation_number=1,
+            pass_rating=4,
+        ), db, admin)
+
+
+def test_rotation_analytics_calculates_sideout_rate(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    for event_type, serving in [
+        ("kill", False),
+        ("opponent_point", False),
+        ("ace", True),
+    ]:
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=players[0].id if event_type != "opponent_point" else None,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=3,
+            we_are_serving=serving,
+        ), db, admin)
+    match.status = "completed"
+    db.commit()
+
+    stats = rotation_analytics(match.our_team_id, db=db)
+    rotation = stats["rotations"][2]
+
+    assert stats["sideout_pct"] == 50.0
+    assert rotation["points_for"] == 2
+    assert rotation["points_against"] == 1
+    assert rotation["sideout_attempts"] == 2

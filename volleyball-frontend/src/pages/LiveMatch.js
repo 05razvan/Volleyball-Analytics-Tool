@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayersByTeam, getMatches, getTeams } from '../api';
 import { API_BASE_URL } from '../config';
+import { QRCodeSVG } from 'qrcode.react';
 
 const BASE_URL = API_BASE_URL;
 
@@ -33,6 +34,9 @@ const apiUndoEvent = (matchId) => authFetch(`/matches/${matchId}/event/undo`, { 
 const apiEndSet = (matchId) => authFetch(`/matches/${matchId}/end-set`, { method: 'POST' });
 const apiCompleteMatch = (matchId) => authFetch(`/matches/${matchId}/complete`, { method: 'POST' });
 const apiSaveLineup = (matchId, data) => authFetch(`/matches/${matchId}/lineup`, { method: 'POST', body: data });
+const apiGetTrackerState = (matchId) => authFetch(`/matches/${matchId}/tracker-state`);
+const apiSaveTrackerState = (matchId, data) => authFetch(`/matches/${matchId}/tracker-state`, { method: 'PUT', body: data });
+const apiLogSubstitution = (matchId, data) => authFetch(`/matches/${matchId}/substitutions`, { method: 'POST', body: data });
 
 const EVENT_GROUPS = [
   {
@@ -73,7 +77,6 @@ function LiveMatch() {
   const [mobile, setMobile] = useState(window.innerWidth <= 700);
 
   const [phase, setPhase] = useState('lineup');
-  // eslint-disable-next-line no-unused-vars
   const [allPlayers, setAllPlayers] = useState([]);
   const [match, setMatch] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -96,6 +99,10 @@ function LiveMatch() {
   const [dragging, setDragging] = useState(null);
   const [actionError, setActionError] = useState('');
   const [savingLineup, setSavingLineup] = useState(false);
+  const [rotationNumber, setRotationNumber] = useState(1);
+  const [passingEnabled, setPassingEnabled] = useState(false);
+  const [showSpectatorQR, setShowSpectatorQR] = useState(false);
+  const [eventSaving, setEventSaving] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setMobile(window.innerWidth <= 700);
@@ -119,6 +126,26 @@ function LiveMatch() {
           setAllPlayers(players);
           setBench(players);
           setLiberos(players.filter(p => p.position === 'Libero'));
+          apiGetTrackerState(matchId).then(saved => {
+            if (!saved || saved.positions?.length !== 6) return;
+            const byId = new Map(players.map(player => [player.id, player]));
+            const restoredPositions = saved.positions.map(id => byId.get(id)).filter(Boolean);
+            if (restoredPositions.length !== 6) return;
+            setPositions(restoredPositions);
+            setBench(saved.bench.map(id => byId.get(id)).filter(Boolean));
+            setWeAreServing(saved.we_are_serving);
+            setRotationNumber(saved.rotation_number);
+            setPassingEnabled(saved.passing_enabled);
+            if (saved.active_libero_swap) {
+              const swap = saved.active_libero_swap;
+              const middle = byId.get(swap.middle_id);
+              const libero = byId.get(swap.libero_id);
+              if (middle && libero) setActiveLiberoSwap({
+                posIndex: swap.posIndex, middle, libero,
+              });
+            }
+            setPhase('tracking');
+          }).catch(() => {});
         });
       }
     });
@@ -126,6 +153,21 @@ function LiveMatch() {
 
   const teamName = (id) => teams.find(t => t.id === id)?.name ?? '...';
   const initials = (name) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
+
+  const saveTrackerState = (nextPositions, nextBench, serving, rotation,
+                            passing = passingEnabled, swap = activeLiberoSwap) =>
+    apiSaveTrackerState(matchId, {
+      positions: nextPositions.map(player => player.id),
+      bench: nextBench.map(player => player.id),
+      we_are_serving: serving,
+      rotation_number: rotation,
+      passing_enabled: passing,
+      active_libero_swap: swap ? {
+        posIndex: swap.posIndex,
+        middle_id: swap.middle.id,
+        libero_id: swap.libero.id,
+      } : null,
+    });
 
   const assignToPosition = (player, posIndex) => {
     const newPositions = positions.map(p => p?.id === player.id ? null : p);
@@ -163,6 +205,7 @@ function LiveMatch() {
         on_court: positions.map(p => p.id),
         bench: bench.map(p => p.id),
       });
+      await saveTrackerState(positions, bench, weServe, rotationNumber);
       setPhase('tracking');
     } catch (error) {
       setActionError(`Could not save the lineup: ${error.message}`);
@@ -216,6 +259,8 @@ function LiveMatch() {
       on_court: newPositions.filter(Boolean).map(p => p.id),
       bench: newBench.map(p => p.id),
     });
+    await saveTrackerState(newPositions, newBench, weAreServing,
+      rotationNumber, passingEnabled, swap);
   };
 
   // Rotate and check libero swap out — returns new state values
@@ -235,17 +280,13 @@ function LiveMatch() {
       ].sort((a,b) => a.name.localeCompare(b.name));
     }
 
-    apiSaveLineup(matchId, {
-      on_court: final.filter(Boolean).map(p => p.id),
-      bench: newBench.map(p => p.id),
-    });
-
     return { positions: final, bench: newBench, swap: newSwap };
   };
 
   const serverPlayer = positions[0];
 
-  const handleEvent = async (eventType) => {
+  const handleEvent = async (eventType, passRating = null) => {
+    if (eventSaving) return;
     const ev = ALL_EVENTS.find(e => e.type === eventType);
     if (!selectedPlayer && eventType !== 'opponent_point' && eventType !== 'our_point') {
       alert('Select a player first');
@@ -261,16 +302,45 @@ function LiveMatch() {
       player_id: selectedPlayer?.id ?? null,
       event_type: eventType,
       set_number: score?.current_set ?? 1,
+      rotation_number: rotationNumber,
+      we_are_serving: weAreServing,
+      pass_rating: passRating,
+      state_before: {
+        positions: positions.map(player => player.id),
+        bench: bench.map(player => player.id),
+        we_are_serving: weAreServing,
+        rotation_number: rotationNumber,
+        passing_enabled: passingEnabled,
+        active_libero_swap: activeLiberoSwap ? {
+          posIndex: activeLiberoSwap.posIndex,
+          middle_id: activeLiberoSwap.middle.id,
+          libero_id: activeLiberoSwap.libero.id,
+        } : null,
+      },
     };
 
-    await apiLogEvent(matchId, event);
-    setLastEvent({ ...event, playerName: selectedPlayer?.name });
+    setActionError('');
+    setEventSaving(true);
+    try {
+      await apiLogEvent(matchId, event);
+    } catch (error) {
+      setActionError(`Could not save event: ${error.message}`);
+      setEventSaving(false);
+      return;
+    }
+    setEventSaving(false);
+    setLastEvent({
+      ...event,
+      playerName: selectedPlayer?.name,
+      previousState: { positions, bench, activeLiberoSwap, weAreServing, rotationNumber },
+    });
     const eventPlayer = selectedPlayer; // capture before clearing
     setSelectedPlayer(null);
     fetchScore();
 
     if (eventType === 'opponent_point') {
       setWeAreServing(false);
+      await saveTrackerState(positions, bench, false, rotationNumber);
       return;
     }
 
@@ -282,6 +352,13 @@ function LiveMatch() {
         setBench(newBench);
         setActiveLiberoSwap(newSwap);
         setWeAreServing(true);
+        const nextRotation = rotationNumber === 6 ? 1 : rotationNumber + 1;
+        setRotationNumber(nextRotation);
+        await apiSaveLineup(matchId, {
+          on_court: newPos.map(p => p.id), bench: newBench.map(p => p.id),
+        });
+        await saveTrackerState(newPos, newBench, true, nextRotation,
+          passingEnabled, newSwap);
       }
       return;
     }
@@ -291,12 +368,44 @@ function LiveMatch() {
         triggerLiberoPrompt(eventPlayer, 0);
       }
       setWeAreServing(false);
+      await saveTrackerState(positions, bench, false, rotationNumber);
       return;
     }   
   };
 
   const handleUndo = async () => {
-    await apiUndoEvent(matchId);
+    const result = await apiUndoEvent(matchId);
+    let previous = lastEvent?.previousState;
+    if (!previous && result?.restored_state) {
+      const restored = result.restored_state;
+      const byId = new Map(allPlayers.map(player => [player.id, player]));
+      const restoredSwap = restored.active_libero_swap;
+      previous = {
+        positions: restored.positions.map(id => byId.get(id)).filter(Boolean),
+        bench: restored.bench.map(id => byId.get(id)).filter(Boolean),
+        weAreServing: restored.we_are_serving,
+        rotationNumber: restored.rotation_number,
+        activeLiberoSwap: restoredSwap ? {
+          posIndex: restoredSwap.posIndex,
+          middle: byId.get(restoredSwap.middle_id),
+          libero: byId.get(restoredSwap.libero_id),
+        } : null,
+      };
+    }
+    if (previous) {
+      setPositions(previous.positions);
+      setBench(previous.bench);
+      setActiveLiberoSwap(previous.activeLiberoSwap);
+      setWeAreServing(previous.weAreServing);
+      setRotationNumber(previous.rotationNumber);
+      await apiSaveLineup(matchId, {
+        on_court: previous.positions.map(p => p.id),
+        bench: previous.bench.map(p => p.id),
+      });
+      await saveTrackerState(previous.positions, previous.bench,
+        previous.weAreServing, previous.rotationNumber,
+        passingEnabled, previous.activeLiberoSwap);
+    }
     setLastEvent(null);
     setUndoMsg('✓');
     setTimeout(() => setUndoMsg(''), 2000);
@@ -309,7 +418,11 @@ function LiveMatch() {
     setSelectedPlayer(null);
     const nextSet = (score?.current_set ?? 1) + 1;
     if (nextSet === 5) setPhase('serve_select');
-    else setWeAreServing(prev => !prev);
+    else {
+      const nextServing = !weAreServing;
+      setWeAreServing(nextServing);
+      await saveTrackerState(positions, bench, nextServing, rotationNumber);
+    }
     fetchScore();
   };
 
@@ -337,13 +450,42 @@ function LiveMatch() {
     setBench(newBench);
     setSubMode(false);
     setSubTarget(null);
+    await apiLogSubstitution(matchId, {
+      player_out_id: subTarget.id,
+      player_in_id: benchPlayer.id,
+      set_number: score?.current_set ?? 1,
+      rotation_number: rotationNumber,
+    });
     await apiSaveLineup(matchId, {
       on_court: newPositions.filter(Boolean).map(p => p.id),
       bench: newBench.map(p => p.id),
     });
+    await saveTrackerState(newPositions, newBench, weAreServing, rotationNumber);
   };
 
   const cancelSub = () => { setSubMode(false); setSubTarget(null); };
+  const spectatorUrl = `${window.location.origin}/spectator/${matchId}`;
+
+  const SpectatorQR = () => !showSpectatorQR ? null : (
+    <div style={s.overlay} onClick={() => setShowSpectatorQR(false)}>
+      <div style={s.promptCard} onClick={event => event.stopPropagation()}>
+        <div style={s.promptTitle}>Spectator scoreboard</div>
+        <div style={{ background: 'white', padding: '12px', borderRadius: '10px', display: 'inline-flex' }}>
+          <QRCodeSVG value={spectatorUrl} size={210} />
+        </div>
+        <div style={{ ...s.promptSub, marginTop: '12px', wordBreak: 'break-all' }}>
+          Scan to follow this match live
+        </div>
+        <button style={s.promptSkipBtn} onClick={() => setShowSpectatorQR(false)}>Close</button>
+      </div>
+    </div>
+  );
+
+  const togglePassing = async () => {
+    const enabled = !passingEnabled;
+    setPassingEnabled(enabled);
+    await saveTrackerState(positions, bench, weAreServing, rotationNumber, enabled);
+  };
 
   if (!score || !match) return <div style={s.loading}>Loading...</div>;
 
@@ -557,6 +699,8 @@ function LiveMatch() {
     return (
       <div style={m.page}>
         <LiberoPrompt />
+        <SpectatorQR />
+        {actionError && <div role="alert" style={m.actionError}>{actionError}</div>}
 
         {/* Score bar */}
         <div style={m.scoreBar}>
@@ -567,6 +711,9 @@ function LiveMatch() {
           </div>
           <div style={m.scoreMid}>
             <div style={m.scoreSet}>Set {score.current_set}</div>
+            <div style={{ fontSize: '10px', color: '#F5C800', fontWeight: '700' }}>
+              ROTATION {rotationNumber}
+            </div>
             <div style={{ fontSize: '10px', color: weAreServing ? '#2ecc71' : '#e74c3c', fontWeight: '600' }}>
               {weAreServing ? '● OUR SERVE' : '● THEIR SERVE'}
             </div>
@@ -746,6 +893,21 @@ function LiveMatch() {
           </div>
 
           {!subMode && (
+            <>
+            <button style={m.passingToggle} onClick={togglePassing}>
+              Passing ratings: {passingEnabled ? 'ON' : 'OFF'}
+            </button>
+            {passingEnabled && (
+              <div style={m.passGrid}>
+                {[0, 1, 2, 3].map(rating => (
+                  <button key={rating} style={m.passBtn}
+                    disabled={!selectedPlayer || eventSaving}
+                    onClick={() => selectedPlayer && handleEvent('pass', rating)}>
+                    Pass {rating}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={m.statGrid}>
               {EVENT_GROUPS.map(group => {
                 const isServeGroup = group.label === 'Serve';
@@ -756,10 +918,11 @@ function LiveMatch() {
                     style={{
                       ...m.statBtn,
                       background: ev.color,
-                      opacity: canUse ? 1 : 0.2,
-                      cursor: canUse ? 'pointer' : 'not-allowed',
+                      opacity: canUse && !eventSaving ? 1 : 0.2,
+                      cursor: canUse && !eventSaving ? 'pointer' : 'not-allowed',
                     }}
-                    onClick={() => canUse && handleEvent(ev.type)}>
+                    disabled={!canUse || eventSaving}
+                    onClick={() => canUse && !eventSaving && handleEvent(ev.type)}>
                     <div style={m.statBtnLabel}>{ev.label}</div>
                     {ev.points === 'us' && <div style={m.statBtnPts}>+pt</div>}
                     {ev.points === 'them' && <div style={m.statBtnPts}>opp+</div>}
@@ -767,6 +930,7 @@ function LiveMatch() {
                 ));
               })}
             </div>
+            </>
           )}
 
           {lastEvent && (
@@ -780,6 +944,7 @@ function LiveMatch() {
         {/* Bottom bar */}
         <div style={m.bottomBar}>
           <button style={m.undoBtn} onClick={handleUndo}>↩{undoMsg}</button>
+          <button style={m.undoBtn} onClick={() => setShowSpectatorQR(true)}>QR</button>
           <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>
           <button style={m.endMatchBtn} onClick={handleComplete}>End Match</button>
         </div>
@@ -791,6 +956,8 @@ function LiveMatch() {
   return (
     <div style={s.page}>
       <LiberoPrompt />
+      <SpectatorQR />
+      {actionError && <div role="alert" style={s.trackingError}>{actionError}</div>}
 
       <div style={s.scoreHeader}>
         <div style={s.scoreBlock}>
@@ -800,6 +967,9 @@ function LiveMatch() {
         </div>
         <div style={s.scoreMid}>
           <div style={s.setLabel}>Set {score.current_set}</div>
+          <div style={{ fontSize: '10px', color: '#F5C800', fontWeight: '700' }}>
+            Rotation {rotationNumber}
+          </div>
           <div>
             {weAreServing
               ? <span style={s.servingUs}>● We are serving</span>
@@ -825,6 +995,7 @@ function LiveMatch() {
       </div>
 
       <div style={s.controls}>
+        <button style={s.undoBtn} onClick={() => setShowSpectatorQR(true)}>Spectator QR</button>
         <button style={s.undoBtn} onClick={handleUndo}>↩ Undo</button>
         {undoMsg && <span style={s.undoMsg}>{undoMsg}</span>}
         <div style={{ flex:1 }} />
@@ -936,6 +1107,22 @@ function LiveMatch() {
               : selectedPlayer ? `Logging for ${selectedPlayer.name}`
               : 'Tap a player on the left'}
           </div>
+          <button style={s.passingToggle} onClick={togglePassing}>
+            Passing ratings: {passingEnabled ? 'ON' : 'OFF'}
+          </button>
+          {passingEnabled && (
+            <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
+              {[0, 1, 2, 3].map(rating => (
+                <button key={rating} style={{ ...s.eventBtn, background: '#246b63',
+                  opacity: selectedPlayer ? 1 : 0.3 }}
+                  disabled={!selectedPlayer || eventSaving}
+                  onClick={() => handleEvent('pass', rating)}>
+                  <span>Pass {rating}</span>
+                  <span style={s.pointHint}>{['Error', 'Poor', 'Good', 'Perfect'][rating]}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {EVENT_GROUPS.map(group => {
             const isServeGroup = group.label === 'Serve';
             const canUseGroup = !isServeGroup || selectedPlayer?.id === serverPlayer?.id;
@@ -952,11 +1139,12 @@ function LiveMatch() {
                       style={{
                         ...s.eventBtn,
                         background: ev.color,
-                        opacity: (selectedPlayer&&!subMode&&canUseGroup) ? 1 : 0.3,
+                        opacity: (selectedPlayer&&!subMode&&canUseGroup&&!eventSaving) ? 1 : 0.3,
                         cursor: (selectedPlayer&&!subMode&&canUseGroup)
                           ? 'pointer' : 'not-allowed',
                       }}
-                      onClick={() => !subMode && handleEvent(ev.type)}>
+                      disabled={eventSaving}
+                      onClick={() => !subMode && !eventSaving && handleEvent(ev.type)}>
                       <span>{ev.label}</span>
                       {ev.points==='us' &&
                         <span style={s.pointHint}>+1 {ourTeamName}</span>}
@@ -1084,6 +1272,8 @@ const s = {
   eventGroupLabel: { fontSize: '10px', color: '#F5C800', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' },
   serverOnlyHint: { color: '#888', fontWeight: '400', textTransform: 'none' },
   eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px' },
+  passingToggle: { marginBottom: '10px', padding: '7px 10px', color: '#F5C800', background: '#20202f', border: '1px solid #555', borderRadius: '7px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' },
+  trackingError: { padding: '9px 14px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '12px', textAlign: 'center' },
   eventBtn: { padding: '14px 8px', border: 'none', borderRadius: '10px', cursor: 'pointer', color: 'white', fontWeight: '700', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minHeight: '60px', justifyContent: 'center' },
   pointHint: { fontSize: '9px', fontWeight: '400', opacity: 0.8 },
   lastEvent: { fontSize: '11px', color: '#aaa', padding: '6px 10px', background: '#1a1a2e', borderRadius: '6px', display: 'inline-block', marginTop: '8px' },
@@ -1140,6 +1330,10 @@ const m = {
   undoBtn: { padding: '10px 14px', background: '#2a2a4a', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', minWidth: '60px' },
   endSetBtn: { flex: 1, padding: '10px', background: '#d35400', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
   endMatchBtn: { flex: 1, padding: '10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
+  passingToggle: { width: '100%', padding: '8px', marginBottom: '8px', color: '#F5C800', background: '#20202f', border: '1px solid #555', borderRadius: '7px', fontSize: '11px', fontWeight: '600' },
+  passGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' },
+  passBtn: { padding: '10px 3px', color: 'white', background: '#246b63', border: 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700' },
+  actionError: { padding: '8px 10px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '11px', textAlign: 'center' },
 };
 
 export default LiveMatch;

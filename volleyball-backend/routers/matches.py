@@ -1,17 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Match, MatchEvent, SetScore, Team, Player
+from models import (
+    EVENT_TYPES,
+    Match,
+    MatchEvent,
+    MatchEventContext,
+    MatchLineup,
+    MatchSubstitution,
+    MatchTrackerState,
+    Player,
+    SetScore,
+    Team,
+)
 from schemas import (
     MatchCreate,
     MatchEventCreate,
     MatchEventResponse,
     MatchLineupUpdate,
     MatchResponse,
+    MatchSubstitutionCreate,
+    MatchTrackerStateUpdate,
 )
 from auth import get_current_user, require_coach_or_above, get_optional_user
 from typing import List
 from datetime import datetime
+import json
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -83,8 +97,43 @@ def log_event(match_id: int, event: MatchEventCreate,
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     check_match_permission(match, current_user, db)
-    new_event = MatchEvent(**event.model_dump())
+    if match.status != "live":
+        raise HTTPException(status_code=400, detail="Events can only be logged for a live match")
+    if event.match_id != match_id:
+        raise HTTPException(status_code=400, detail="Match ID does not match the request path")
+    if event.set_number != match.current_set:
+        raise HTTPException(status_code=400, detail="Event set does not match the current set")
+    if event.event_type not in EVENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid event type")
+    if event.rotation_number not in range(1, 7):
+        raise HTTPException(status_code=400, detail="Rotation must be between 1 and 6")
+    if event.pass_rating is not None and (
+        event.event_type != "pass" or event.pass_rating not in range(0, 4)
+    ):
+        raise HTTPException(status_code=400, detail="Pass rating must be 0, 1, 2, or 3")
+    if event.event_type == "pass" and event.pass_rating is None:
+        raise HTTPException(status_code=400, detail="Pass events require a rating")
+    if event.player_id is not None:
+        player = db.query(Player).filter(Player.id == event.player_id).first()
+        if not player or player.team_id != match.our_team_id:
+            raise HTTPException(status_code=400,
+                detail="Event player does not belong to the tracking team")
+
+    new_event = MatchEvent(
+        match_id=event.match_id,
+        player_id=event.player_id,
+        event_type=event.event_type,
+        set_number=event.set_number,
+    )
     db.add(new_event)
+    db.flush()
+    db.add(MatchEventContext(
+        event_id=new_event.id,
+        rotation_number=event.rotation_number,
+        we_were_serving=event.we_are_serving,
+        pass_rating=event.pass_rating,
+        state_before_json=json.dumps(event.state_before) if event.state_before else None,
+    ))
     db.commit()
     db.refresh(new_event)
     return new_event
@@ -101,9 +150,32 @@ def undo_last_event(match_id: int, db: Session = Depends(get_db),
     ).order_by(MatchEvent.id.desc()).first()
     if not last:
         raise HTTPException(status_code=404, detail="No events to undo")
+    context = db.query(MatchEventContext).filter(
+        MatchEventContext.event_id == last.id).first()
+    restored_state = json.loads(context.state_before_json) \
+        if context and context.state_before_json else None
+    if restored_state:
+        state = db.query(MatchTrackerState).filter_by(match_id=match_id).first()
+        if not state:
+            state = MatchTrackerState(match_id=match_id)
+            db.add(state)
+        state.positions_json = json.dumps(restored_state["positions"])
+        state.bench_json = json.dumps(restored_state["bench"])
+        state.we_are_serving = restored_state["we_are_serving"]
+        state.rotation_number = restored_state["rotation_number"]
+        state.passing_enabled = restored_state.get("passing_enabled", False)
+        state.active_libero_swap_json = json.dumps(
+            restored_state.get("active_libero_swap")
+        ) if restored_state.get("active_libero_swap") else None
+    if context:
+        db.delete(context)
     db.delete(last)
     db.commit()
-    return last
+    return {"event": {
+        "id": last.id,
+        "event_type": last.event_type,
+        "player_id": last.player_id,
+    }, "restored_state": restored_state}
 
 @router.post("/{match_id}/end-set")
 def end_set(match_id: int, db: Session = Depends(get_db),
@@ -112,6 +184,11 @@ def end_set(match_id: int, db: Session = Depends(get_db),
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     check_match_permission(match, current_user, db)
+    if match.status != "live":
+        raise HTTPException(status_code=400, detail="Only a live match can end a set")
+    if db.query(SetScore).filter_by(
+        match_id=match_id, set_number=match.current_set).first():
+        raise HTTPException(status_code=409, detail="This set has already been recorded")
     our, their = calculate_score(match_id, match.current_set, db)
     set_score = SetScore(match_id=match_id, set_number=match.current_set,
                          our_score=our, opponent_score=their)
@@ -128,6 +205,11 @@ def complete_match(match_id: int, db: Session = Depends(get_db),
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     check_match_permission(match, current_user, db)
+    if match.status != "live":
+        raise HTTPException(status_code=400, detail="Only a live match can be completed")
+    if db.query(SetScore).filter_by(
+        match_id=match_id, set_number=match.current_set).first():
+        raise HTTPException(status_code=409, detail="This set has already been recorded")
     our, their = calculate_score(match_id, match.current_set, db)
     set_score = SetScore(match_id=match_id, set_number=match.current_set,
                          our_score=our, opponent_score=their)
@@ -164,8 +246,6 @@ def get_events(match_id: int, db: Session = Depends(get_db)):
     return db.query(MatchEvent).filter(
         MatchEvent.match_id == match_id
     ).order_by(MatchEvent.timestamp).all()
-
-from models import MatchLineup
 
 @router.post("/{match_id}/lineup")
 def set_lineup(match_id: int, data: MatchLineupUpdate,
@@ -215,10 +295,134 @@ def set_lineup(match_id: int, data: MatchLineupUpdate,
     db.commit()
     return {"message": "Lineup saved"}
 
+@router.put("/{match_id}/tracker-state")
+def save_tracker_state(match_id: int, data: MatchTrackerStateUpdate,
+                       db: Session = Depends(get_db),
+                       current_user=Depends(get_current_user)):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    check_match_permission(match, current_user, db)
+    if len(data.positions) != 6 or len(set(data.positions)) != 6:
+        raise HTTPException(status_code=400,
+            detail="Tracker state requires six unique court positions")
+    if data.rotation_number not in range(1, 7):
+        raise HTTPException(status_code=400, detail="Rotation must be between 1 and 6")
+    all_ids = data.positions + data.bench
+    valid_count = db.query(Player).filter(
+        Player.id.in_(all_ids), Player.team_id == match.our_team_id).count()
+    if valid_count != len(set(all_ids)) or len(all_ids) != len(set(all_ids)):
+        raise HTTPException(status_code=400, detail="Tracker state contains invalid players")
+
+    state = db.query(MatchTrackerState).filter_by(match_id=match_id).first()
+    if not state:
+        state = MatchTrackerState(match_id=match_id)
+        db.add(state)
+    state.positions_json = json.dumps(data.positions)
+    state.bench_json = json.dumps(data.bench)
+    state.we_are_serving = data.we_are_serving
+    state.rotation_number = data.rotation_number
+    state.passing_enabled = data.passing_enabled
+    state.active_libero_swap_json = json.dumps(data.active_libero_swap) \
+        if data.active_libero_swap else None
+    db.commit()
+    return {"message": "Tracker state saved"}
+
+@router.get("/{match_id}/tracker-state")
+def get_tracker_state(match_id: int, db: Session = Depends(get_db)):
+    state = db.query(MatchTrackerState).filter_by(match_id=match_id).first()
+    if not state:
+        return None
+    return {
+        "positions": json.loads(state.positions_json),
+        "bench": json.loads(state.bench_json),
+        "we_are_serving": state.we_are_serving,
+        "rotation_number": state.rotation_number,
+        "passing_enabled": state.passing_enabled,
+        "active_libero_swap": json.loads(state.active_libero_swap_json)
+            if state.active_libero_swap_json else None,
+        "updated_at": state.updated_at,
+    }
+
+@router.post("/{match_id}/substitutions")
+def log_substitution(match_id: int, data: MatchSubstitutionCreate,
+                     db: Session = Depends(get_db),
+                     current_user=Depends(get_current_user)):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    check_match_permission(match, current_user, db)
+    if match.status != "live" or data.set_number != match.current_set:
+        raise HTTPException(status_code=400, detail="Invalid substitution match state")
+    players = db.query(Player).filter(
+        Player.id.in_([data.player_out_id, data.player_in_id]),
+        Player.team_id == match.our_team_id,
+    ).count()
+    if players != 2 or data.player_out_id == data.player_in_id:
+        raise HTTPException(status_code=400, detail="Invalid substitution players")
+    sequence = db.query(MatchSubstitution).filter_by(match_id=match_id).count() + 1
+    substitution = MatchSubstitution(
+        match_id=match_id,
+        set_number=data.set_number,
+        sequence=sequence,
+        player_out_id=data.player_out_id,
+        player_in_id=data.player_in_id,
+        rotation_number=data.rotation_number,
+    )
+    db.add(substitution)
+    db.commit()
+    return {"message": "Substitution recorded", "sequence": sequence}
+
+@router.get("/{match_id}/substitutions")
+def get_substitutions(match_id: int, db: Session = Depends(get_db)):
+    substitutions = db.query(MatchSubstitution).filter_by(
+        match_id=match_id).order_by(MatchSubstitution.sequence).all()
+    players = {p.id: p.name for p in db.query(Player).filter(Player.id.in_({
+        player_id for sub in substitutions
+        for player_id in (sub.player_out_id, sub.player_in_id)
+    })).all()} if substitutions else {}
+    return [{
+        "id": sub.id,
+        "set_number": sub.set_number,
+        "sequence": sub.sequence,
+        "player_out_id": sub.player_out_id,
+        "player_out_name": players.get(sub.player_out_id, "Unknown"),
+        "player_in_id": sub.player_in_id,
+        "player_in_name": players.get(sub.player_in_id, "Unknown"),
+        "rotation_number": sub.rotation_number,
+        "timestamp": sub.timestamp,
+    } for sub in substitutions]
+
+@router.get("/{match_id}/spectator")
+def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
+    """Return the full public scoreboard in one request for efficient polling."""
+    score = get_score(match_id, db)
+    lineup = get_lineup(match_id, db)
+    tracker = get_tracker_state(match_id, db)
+    events = db.query(MatchEvent).filter_by(match_id=match_id).order_by(
+        MatchEvent.timestamp.desc()).limit(100).all()
+    player_ids = {event.player_id for event in events if event.player_id}
+    player_names = {player.id: player.name for player in db.query(Player).filter(
+        Player.id.in_(player_ids)).all()} if player_ids else {}
+    return {
+        "score": score,
+        "lineup": lineup,
+        "tracker": tracker,
+        "substitutions": get_substitutions(match_id, db),
+        "events": [{
+            "id": event.id,
+            "player_id": event.player_id,
+            "player_name": player_names.get(event.player_id),
+            "event_type": event.event_type,
+            "set_number": event.set_number,
+            "timestamp": event.timestamp,
+        } for event in events],
+    }
+
 @router.get("/{match_id}/lineup")
 def get_lineup(match_id: int, db: Session = Depends(get_db)):
     lineups = db.query(MatchLineup).filter(
-        MatchLineup.match_id == match_id).all()
+        MatchLineup.match_id == match_id).order_by(MatchLineup.id).all()
     result = {"on_court": [], "bench": []}
     for l in lineups:
         player = db.query(Player).filter(Player.id == l.player_id).first()

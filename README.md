@@ -46,3 +46,11 @@ Configure `REACT_APP_API_URL` in Vercel to point to the Railway backend. Changin
 PYTHONPATH=volleyball-backend pytest -q volleyball-backend/tests
 cd volleyball-frontend && npm run build
 ```
+
+## Match analytics definitions
+
+- **Side-out %**: receiving rallies won by the tracked team divided by all receiving rallies.
+- **Rotation performance**: points for, points against, point difference, and side-out percentage while each starting rotation (R1–R6) is active.
+- **Pass rating**: optional 0–3 reception quality entered by the tracker (`0` error, `1` poor, `2` good, `3` perfect).
+
+Rotation, serving possession, libero state, substitutions, and the passing toggle are persisted so a live match can resume after a refresh or device change. New contextual analytics begin accumulating with matches tracked after this feature was deployed; older events do not contain rotation context.

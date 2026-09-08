@@ -55,6 +55,10 @@ class MatchEventCreate(BaseModel):
     player_id: Optional[int] = None
     event_type: str
     set_number: int
+    rotation_number: int = 1
+    we_are_serving: bool = False
+    pass_rating: Optional[int] = None
+    state_before: Optional[dict] = None
 
 class MatchEventResponse(BaseModel):
     id: int
@@ -76,6 +80,20 @@ class SetScoreResponse(BaseModel):
 class MatchLineupUpdate(BaseModel):
     on_court: List[int]
     bench: List[int] = Field(default_factory=list)
+
+class MatchTrackerStateUpdate(BaseModel):
+    positions: List[int]
+    bench: List[int] = Field(default_factory=list)
+    we_are_serving: bool
+    rotation_number: int
+    passing_enabled: bool = False
+    active_libero_swap: Optional[dict] = None
+
+class MatchSubstitutionCreate(BaseModel):
+    player_out_id: int
+    player_in_id: int
+    set_number: int
+    rotation_number: int
 
 class AvailabilityCreate(BaseModel):
     player_id: int
