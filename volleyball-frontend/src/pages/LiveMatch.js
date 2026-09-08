@@ -907,7 +907,12 @@ function LiveMatch() {
             {passingEnabled && (
               <div style={m.passGrid}>
                 {PASS_RATINGS.map(pass => (
-                  <button key={pass.rating} style={{ ...m.passBtn, background: pass.color }}
+                  <button key={pass.rating} style={{
+                    ...m.passBtn,
+                    background: pass.color,
+                    opacity: selectedPlayer && !eventSaving ? 1 : 0.2,
+                    cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed',
+                  }}
                     disabled={!selectedPlayer || eventSaving}
                     onClick={() => selectedPlayer && handleEvent('pass', pass.rating)}>
                     <span>{pass.emoji}</span> {pass.shortLabel}
@@ -1121,7 +1126,8 @@ function LiveMatch() {
             <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
               {PASS_RATINGS.map(pass => (
                 <button key={pass.rating} style={{ ...s.eventBtn, background: pass.color,
-                  opacity: selectedPlayer ? 1 : 0.3 }}
+                  opacity: selectedPlayer && !eventSaving ? 1 : 0.3,
+                  cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed' }}
                   disabled={!selectedPlayer || eventSaving}
                   onClick={() => handleEvent('pass', pass.rating)}>
                   <span>{pass.emoji} {pass.label}</span>
