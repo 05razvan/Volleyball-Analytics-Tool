@@ -182,6 +182,63 @@ def rotation_analytics(team_id: int, last_n: Optional[int] = None,
         "rotations": rotations,
     }
 
+@router.get("/team/{team_id}/home-away")
+def home_away_analytics(team_id: int, last_n: Optional[int] = None,
+                        db: Session = Depends(get_db)):
+    match_query = db.query(Match).filter(
+        Match.our_team_id == team_id,
+        Match.status == "completed",
+    ).order_by(Match.date.desc())
+    if last_n:
+        match_query = match_query.limit(last_n)
+    matches = match_query.all()
+
+    def summarize(group):
+        match_ids = [match.id for match in group]
+        events = db.query(MatchEvent).filter(
+            MatchEvent.match_id.in_(match_ids)).all() if match_ids else []
+        kills = sum(event.event_type == "kill" for event in events)
+        attacks = sum(event.event_type in {"kill", "spike", "error"}
+                      for event in events)
+        serve_errors = sum(event.event_type == "serve_error" for event in events)
+        serves = sum(event.event_type in {"serve", "ace", "serve_error"}
+                     for event in events)
+
+        wins = 0
+        for match in group:
+            sets = db.query(SetScore).filter_by(match_id=match.id).all()
+            won = sum(score.our_score > score.opponent_score for score in sets)
+            lost = sum(score.opponent_score > score.our_score for score in sets)
+            wins += won > lost
+
+        context_rows = db.query(MatchEvent, MatchEventContext).join(
+            MatchEventContext, MatchEventContext.event_id == MatchEvent.id
+        ).filter(MatchEvent.match_id.in_(match_ids)).all() if match_ids else []
+        receive_points = [(event, context) for event, context in context_rows
+                          if not context.we_were_serving and
+                          event.event_type in {"kill", "our_point", "kill_block",
+                                               "serve_error", "opponent_point"}]
+        sideouts = sum(event.event_type in {"kill", "our_point", "kill_block"}
+                       for event, _ in receive_points)
+        return {
+            "matches": len(group),
+            "wins": wins,
+            "losses": len(group) - wins,
+            "win_pct": round(wins / len(group) * 100, 1) if group else None,
+            "kill_pct": round(kills / attacks * 100, 1) if attacks else None,
+            "serve_error_rate": round(serve_errors / serves * 100, 1)
+                if serves else None,
+            "sideout_pct": round(sideouts / len(receive_points) * 100, 1)
+                if receive_points else None,
+        }
+
+    return {
+        "home": summarize([match for match in matches
+                           if match.home_team_id == team_id]),
+        "away": summarize([match for match in matches
+                           if match.away_team_id == team_id]),
+    }
+
 @router.get("/team/{team_id}/trend")
 def team_trend(team_id: int, last_n: int = 5, db: Session = Depends(get_db)):
     matches = db.query(Match).filter(

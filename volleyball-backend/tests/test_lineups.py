@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from database import SessionLocal, engine
 from models import Base, Match, MatchLineup, Player, Team, User
 from routers.matches import log_event, save_tracker_state, set_lineup, undo_last_event
-from routers.analytics import rotation_analytics
+from routers.analytics import home_away_analytics, rotation_analytics
 from schemas import MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
@@ -187,3 +187,29 @@ def test_rotation_analytics_calculates_sideout_rate(lineup_data):
     assert rotation["points_for"] == 2
     assert rotation["points_against"] == 1
     assert rotation["sideout_attempts"] == 2
+
+
+def test_home_away_analytics_separates_location(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    for event_type in ["kill", "serve", "serve_error"]:
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=players[0].id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=event_type != "kill",
+        ), db, admin)
+    from models import SetScore
+    db.add(SetScore(match_id=match.id, set_number=1,
+                    our_score=25, opponent_score=20))
+    match.status = "completed"
+    db.commit()
+
+    stats = home_away_analytics(match.our_team_id, db=db)
+
+    assert stats["home"]["matches"] == 1
+    assert stats["home"]["wins"] == 1
+    assert stats["home"]["serve_error_rate"] == 50.0
+    assert stats["home"]["sideout_pct"] == 100.0
+    assert stats["away"]["matches"] == 0

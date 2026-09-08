@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getTeams, getTeamAnalytics, getTeamTrend, getPlayerAnalytics,
          getPlayerMatchHistory, getTopPerformers, getMatchCount,
-         getTeamMatchHistory, getRotationAnalytics } from '../api';
+         getTeamMatchHistory, getRotationAnalytics,
+         getHomeAwayAnalytics } from '../api';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
@@ -59,6 +60,7 @@ function Analytics() {
   const [playerHistory, setPlayerHistory] = useState([]);
   const [teamHistory, setTeamHistory] = useState([]);
   const [rotationStats, setRotationStats] = useState(null);
+  const [homeAwayStats, setHomeAwayStats] = useState(null);
   const [view, setView] = useState('team');
   const [mobile, setMobile] = useState(window.innerWidth <= 600);
 
@@ -83,6 +85,7 @@ function Analytics() {
     getMatchCount(selectedTeam).then(res => setMatchCount(res.data.count));
     getTeamMatchHistory(selectedTeam).then(res => setTeamHistory(res.data)).catch(() => {});
     getRotationAnalytics(selectedTeam, n).then(res => setRotationStats(res.data));
+    getHomeAwayAnalytics(selectedTeam, n).then(res => setHomeAwayStats(res.data));
     setActivePlayer(null);
     setPlayerStats(null);
     setPlayerHistory([]);
@@ -160,6 +163,34 @@ function Analytics() {
             <StatCard label="Pass average" value={teamStats.team_pass_average ?? '—'}
               unit={teamStats.team_pass_average == null ? '' : '/3'} color="#1abc9c" />
           </div>
+
+          {homeAwayStats && (homeAwayStats.home.matches > 0 || homeAwayStats.away.matches > 0) && (
+            <>
+              <h3 style={styles.sectionTitle}>Home vs away</h3>
+              <div style={styles.comparisonGrid}>
+                {['home', 'away'].map(location => {
+                  const stats = homeAwayStats[location];
+                  return (
+                    <div key={location} style={styles.comparisonCard}>
+                      <div style={styles.comparisonTitle}>{location}</div>
+                      {stats.matches === 0 ? (
+                        <div style={styles.comparisonEmpty}>No completed matches</div>
+                      ) : (
+                        <div style={styles.comparisonRows}>
+                          <div style={styles.comparisonRow}><span>Record</span><strong>{stats.wins}–{stats.losses}</strong></div>
+                          <div style={styles.comparisonRow}><span>Win rate</span><strong>{stats.win_pct}%</strong></div>
+                          <div style={styles.comparisonRow}><span>Kill %</span><strong>{stats.kill_pct ?? '—'}{stats.kill_pct == null ? '' : '%'}</strong></div>
+                          <div style={styles.comparisonRow}><span>Serve error</span><strong>{stats.serve_error_rate ?? '—'}{stats.serve_error_rate == null ? '' : '%'}</strong></div>
+                          <div style={styles.comparisonRow}><span>Side-out</span><strong>{stats.sideout_pct ?? '—'}{stats.sideout_pct == null ? '' : '%'}</strong></div>
+                          <div style={styles.comparisonRow}><span>Matches</span><strong>{stats.matches}</strong></div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {rotationStats?.rotations?.some(rotation =>
             rotation.points_for + rotation.points_against > 0) && (
@@ -447,6 +478,12 @@ const styles = {
   chartTitle: { fontSize: '12px', fontWeight: '500', marginBottom: '10px', color: '#888' },
   rotationGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '6px', marginTop: '10px' },
   rotationCard: { display: 'flex', flexDirection: 'column', gap: '3px', padding: '8px', background: '#111', borderRadius: '7px', color: '#aaa', fontSize: '10px' },
+  comparisonGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '8px' },
+  comparisonCard: { background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: '10px', padding: '14px' },
+  comparisonTitle: { color: '#F5C800', fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '10px' },
+  comparisonRows: { display: 'grid', gap: '7px', fontSize: '12px', color: '#888' },
+  comparisonRow: { display: 'flex', justifyContent: 'space-between', gap: '12px' },
+  comparisonEmpty: { color: '#555', fontSize: '12px' },
   tooltip: {
     background: '#1e1e1e', border: '1px solid #333', borderRadius: '8px',
     padding: '8px 12px', fontSize: '12px',
