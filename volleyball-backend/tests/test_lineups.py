@@ -1,6 +1,7 @@
 import os
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["JWT_SECRET"] = "test-secret-not-used-in-production"
 
 import pytest
 from fastapi import HTTPException

@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { API_BASE_URL } from './config';
 
-const BASE_URL = 'https://volleyball-analytics-tool-production.up.railway.app';
+const BASE_URL = API_BASE_URL;
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');

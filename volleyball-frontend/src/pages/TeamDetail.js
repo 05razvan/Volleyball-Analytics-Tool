@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayerAnalytics, promoteCaptain, removeFromTeam,
          updatePlayerProfile } from '../api';
+import { API_BASE_URL } from '../config';
 
 const POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"];
-const BASE_URL = 'https://volleyball-analytics-tool-production.up.railway.app';
+const BASE_URL = API_BASE_URL;
 
 function TeamDetail() {
   const { teamId } = useParams();

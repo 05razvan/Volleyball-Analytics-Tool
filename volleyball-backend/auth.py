@@ -4,10 +4,19 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+import os
+import secrets
+import warnings
 from database import get_db
 from models import User, Team, Player
 
-SECRET_KEY = "volleyballappkey2024xq9z"
+SECRET_KEY = os.environ.get("JWT_SECRET")
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_urlsafe(32)
+    warnings.warn(
+        "JWT_SECRET is not set; login sessions will be invalidated when the server restarts",
+        RuntimeWarning,
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 

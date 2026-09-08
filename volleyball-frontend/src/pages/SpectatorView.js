@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
-const api_base = 'https://volleyball-analytics-tool-production.up.railway.app';
+const api_base = API_BASE_URL;
 const EVENT_LABELS = {
   kill:           { label: 'Kill',         emoji: '⚡', color: '#2ecc71', point: 'us'   },
   ace:            { label: 'Ace',          emoji: '🎯', color: '#3498db', point: 'us'   },

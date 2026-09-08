@@ -4,26 +4,34 @@ from database import engine, SessionLocal
 from models import Base, User
 from auth import hash_password
 from routers import teams, players, matches, availability, analytics, auth, join_requests
+import os
 
 Base.metadata.create_all(bind=engine)
 
 def seed_admin():
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if not admin_password:
+        print("ADMIN_PASSWORD is not set; admin bootstrap skipped")
+        return
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@volleyball.app")
     db = SessionLocal()
     try:
         existing = db.query(User).filter(
-            User.email == "admin@volleyball.app").first()
+            User.email == admin_email).first()
         if not existing:
             admin = User(
-                email="admin@volleyball.app",
-                hashed_password=hash_password("admin1234"),
+                email=admin_email,
+                hashed_password=hash_password(admin_password),
                 name="Admin",
                 role="admin",
             )
             db.add(admin)
             db.commit()
-            print("Admin created: admin@volleyball.app / admin1234")
+            print(f"Admin account created: {admin_email}")
         else:
-            print("✓ Admin account already exists")
+            existing.hashed_password = hash_password(admin_password)
+            db.commit()
+            print(f"Admin password synchronized from environment: {admin_email}")
     except Exception as e:
         print(f"Admin seed error: {e}")
     finally:
@@ -31,9 +39,14 @@ def seed_admin():
 
 app = FastAPI()
 
+allowed_origins = [origin.strip() for origin in os.environ.get(
+    "CORS_ORIGINS",
+    "https://volleyball-analytics-tool-7wdj.vercel.app,http://localhost:3000",
+).split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

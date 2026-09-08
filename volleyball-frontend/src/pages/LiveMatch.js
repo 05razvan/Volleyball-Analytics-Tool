@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayersByTeam, getMatches, getTeams } from '../api';
+import { API_BASE_URL } from '../config';
 
-const BASE_URL = 'https://volleyball-analytics-tool-production.up.railway.app';
+const BASE_URL = API_BASE_URL;
 
 const authFetch = async (path, options = {}) => {
   const token = localStorage.getItem('token');
