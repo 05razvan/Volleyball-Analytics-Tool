@@ -10,6 +10,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/players", tags=["players"])
 
 class PlayerProfileUpdate(BaseModel):
+    name: Optional[str] = None
     jersey_number: Optional[int] = None
     position: Optional[str] = None
 
@@ -51,16 +52,27 @@ def update_player_profile(
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
     if current_user.role != "admin":
-        team = db.query(Team).filter(
-            (Team.head_coach_id == current_user.id) |
-            (Team.assistant_coach_id == current_user.id)
-        ).first()
-        if not team or team.id != player.team_id:
+        can_edit = False
+        if current_user.role == "coach":
+            team = db.query(Team).filter(
+                (Team.head_coach_id == current_user.id) |
+                (Team.assistant_coach_id == current_user.id)
+            ).first()
+            can_edit = bool(team and team.id == player.team_id)
+        elif current_user.role == "captain":
+            can_edit = bool(current_user.player and
+                            current_user.player.team_id == player.team_id)
+        if not can_edit:
             raise HTTPException(status_code=403,
                 detail="You can only edit players on your own team")
-    if body.jersey_number is not None:
+    if body.name is not None:
+        cleaned_name = body.name.strip()
+        if not cleaned_name:
+            raise HTTPException(status_code=400, detail="Player name cannot be empty")
+        player.name = cleaned_name
+    if "jersey_number" in body.model_fields_set:
         player.jersey_number = body.jersey_number
-    if body.position is not None:
+    if "position" in body.model_fields_set:
         player.position = body.position
     db.commit()
     db.refresh(player)

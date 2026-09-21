@@ -16,6 +16,7 @@ from routers.matches import (
     undo_last_event,
 )
 from routers.analytics import home_away_analytics, rotation_analytics
+from routers.players import PlayerProfileUpdate, update_player_profile
 from schemas import MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
@@ -237,3 +238,22 @@ def test_home_away_analytics_separates_location(lineup_data):
     assert stats["home"]["serve_error_rate"] == 50.0
     assert stats["home"]["sideout_pct"] == 100.0
     assert stats["away"]["matches"] == 0
+
+
+def test_admin_can_edit_player_name_and_clear_details(lineup_data):
+    db, admin, _, players, _ = lineup_data
+    player = players[0]
+    player.jersey_number = 12
+    player.position = "Setter"
+    db.commit()
+
+    updated = update_player_profile(
+        player.id,
+        PlayerProfileUpdate(name="  New Name  ", jersey_number=None, position=None),
+        db,
+        admin,
+    )
+
+    assert updated.name == "New Name"
+    assert updated.jersey_number is None
+    assert updated.position is None

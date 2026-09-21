@@ -15,7 +15,7 @@ function TeamDetail() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [playerStats, setPlayerStats] = useState(null);
   const [editingProfile, setEditingProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({ jersey_number: '', position: '' });
+  const [profileForm, setProfileForm] = useState({ name: '', jersey_number: '', position: '' });
   const [msg, setMsg] = useState('');
   const [mobile, setMobile] = useState(window.innerWidth <= 600);
 
@@ -49,6 +49,7 @@ function TeamDetail() {
     }
     setSelectedPlayer(player);
     setProfileForm({
+      name: player.name,
       jersey_number: player.jersey_number ?? '',
       position: player.position ?? '',
     });
@@ -87,6 +88,7 @@ function TeamDetail() {
   const handleProfileSave = async () => {
     try {
       await updatePlayerProfile(selectedPlayer.id, {
+        name: profileForm.name,
         jersey_number: profileForm.jersey_number ? parseInt(profileForm.jersey_number) : null,
         position: profileForm.position || null,
       });
@@ -129,10 +131,13 @@ function TeamDetail() {
         <div style={styles.editSection}>
           {!editingProfile ? (
             <button style={styles.editBtn} onClick={() => setEditingProfile(true)}>
-              ✏️ Edit position & jersey
+              ✏️ Edit player details
             </button>
           ) : (
             <div style={styles.editForm}>
+              <input style={styles.input} type="text" placeholder="Player name"
+                value={profileForm.name}
+                onChange={e => setProfileForm({ ...profileForm, name: e.target.value })} />
               <select style={styles.input} value={profileForm.position}
                 onChange={e => setProfileForm({ ...profileForm, position: e.target.value })}>
                 <option value="">No position</option>
