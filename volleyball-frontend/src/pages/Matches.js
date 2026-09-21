@@ -146,9 +146,10 @@ function Matches() {
       })
     : matches;
 
-  const scheduled = filtered.filter(m => m.status === 'scheduled');
-  const live = filtered.filter(m => m.status === 'live');
-  const completed = filtered.filter(m => m.status === 'completed');
+  const byDate = (a, b) => new Date(a.date) - new Date(b.date);
+  const scheduled = filtered.filter(m => m.status === 'scheduled').sort(byDate);
+  const live = filtered.filter(m => m.status === 'live').sort(byDate);
+  const completed = filtered.filter(m => m.status === 'completed').sort(byDate);
 
   const activeDivisions = DIVISIONS.filter(div =>
     matches.some(m => {
