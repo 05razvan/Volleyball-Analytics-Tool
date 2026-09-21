@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models import (
+    Availability,
     EVENT_TYPES,
     MATCH_TYPES,
     Match,
@@ -96,6 +97,46 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db),
     db.commit()
     db.refresh(new_match)
     return new_match
+
+@router.delete("/{match_id}")
+def delete_match(match_id: int, db: Session = Depends(get_db),
+                 current_user=Depends(get_current_user)):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if current_user.role not in ("coach", "admin"):
+        raise HTTPException(status_code=403,
+            detail="Only coaches and admins can delete matches")
+    if current_user.role == "coach":
+        team = db.query(Team).filter(
+            (Team.head_coach_id == current_user.id) |
+            (Team.assistant_coach_id == current_user.id)
+        ).first()
+        if not team or team.id != match.our_team_id:
+            raise HTTPException(status_code=403,
+                detail="You can only delete matches for your own team")
+
+    event_ids = [event_id for (event_id,) in db.query(MatchEvent.id).filter(
+        MatchEvent.match_id == match_id).all()]
+    if event_ids:
+        db.query(MatchEventContext).filter(
+            MatchEventContext.event_id.in_(event_ids)).delete(
+                synchronize_session=False)
+    db.query(MatchSubstitution).filter(
+        MatchSubstitution.match_id == match_id).delete(synchronize_session=False)
+    db.query(MatchTrackerState).filter(
+        MatchTrackerState.match_id == match_id).delete(synchronize_session=False)
+    db.query(MatchLineup).filter(
+        MatchLineup.match_id == match_id).delete(synchronize_session=False)
+    db.query(Availability).filter(
+        Availability.match_id == match_id).delete(synchronize_session=False)
+    db.query(SetScore).filter(
+        SetScore.match_id == match_id).delete(synchronize_session=False)
+    db.query(MatchEvent).filter(
+        MatchEvent.match_id == match_id).delete(synchronize_session=False)
+    db.delete(match)
+    db.commit()
+    return {"message": "Match and its tracking data deleted"}
 
 @router.post("/{match_id}/start")
 def start_match(match_id: int, db: Session = Depends(get_db),

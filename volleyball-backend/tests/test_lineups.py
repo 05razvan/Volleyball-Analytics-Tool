@@ -8,9 +8,13 @@ import pytest
 from fastapi import HTTPException
 
 from database import SessionLocal, engine
-from models import Base, Match, MatchLineup, Player, Team, User
+from models import (
+    Availability, Base, Match, MatchEvent, MatchEventContext, MatchLineup,
+    MatchSubstitution, MatchTrackerState, Player, SetScore, Team, User,
+)
 from routers.matches import (
     create_match,
+    delete_match,
     get_spectator_snapshot,
     log_event,
     save_tracker_state,
@@ -77,6 +81,44 @@ def test_saves_six_player_lineup_and_bench(lineup_data):
     assert response == {"message": "Lineup saved"}
     assert sum(entry.is_on_court for entry in saved) == 6
     assert sum(not entry.is_on_court for entry in saved) == 1
+
+
+def test_admin_can_delete_match_and_all_tracking_data(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    event = MatchEvent(
+        match_id=match.id, player_id=players[0].id,
+        event_type="kill", set_number=1,
+    )
+    db.add(event)
+    db.flush()
+    db.add_all([
+        MatchEventContext(
+            event_id=event.id, rotation_number=1, we_were_serving=True),
+        MatchLineup(match_id=match.id, player_id=players[0].id),
+        MatchTrackerState(match_id=match.id),
+        MatchSubstitution(
+            match_id=match.id, set_number=1, sequence=1,
+            player_out_id=players[0].id, player_in_id=players[1].id,
+            rotation_number=1,
+        ),
+        Availability(
+            match_id=match.id, player_id=players[0].id, status="available"),
+        SetScore(match_id=match.id, set_number=1, our_score=25, opponent_score=20),
+    ])
+    db.commit()
+
+    response = delete_match(match.id, db, admin)
+
+    assert response == {"message": "Match and its tracking data deleted"}
+    assert db.query(Match).filter_by(id=match.id).first() is None
+    assert db.query(MatchEvent).count() == 0
+    assert db.query(MatchEventContext).count() == 0
+    assert db.query(MatchLineup).count() == 0
+    assert db.query(MatchTrackerState).count() == 0
+    assert db.query(MatchSubstitution).count() == 0
+    assert db.query(Availability).count() == 0
+    assert db.query(SetScore).count() == 0
+    assert db.query(Player).count() == 8
 
 
 @pytest.mark.parametrize(

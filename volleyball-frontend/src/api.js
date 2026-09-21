@@ -24,6 +24,7 @@ export const createPlayer = (data) => api.post('/players/', data);
 
 export const getMatches = () => api.get('/matches/');
 export const createMatch = (data) => api.post('/matches/', data);
+export const deleteMatch = (matchId) => api.delete(`/matches/${matchId}`);
 export const startMatch = (matchId) => api.post(`/matches/${matchId}/start`);
 export const getScore = (matchId) => api.get(`/matches/${matchId}/score`);
 export const logEvent = (matchId, data) => api.post(`/matches/${matchId}/event`, data);

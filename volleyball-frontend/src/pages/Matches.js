@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMatches, createMatch, getTeams, startMatch,
+import { getMatches, createMatch, deleteMatch, getTeams, startMatch,
          getMatchTopPerformers, getMatchSets } from '../api';
 import { getRole } from '../auth';
 
@@ -23,6 +23,7 @@ function Matches() {
   const navigate = useNavigate();
   const role = getRole();
   const canCreateMatch = role === 'coach' || role === 'captain' || role === 'admin';
+  const canDeleteMatch = role === 'coach' || role === 'admin';
 
   useEffect(() => {
     getMatches().then(res => {
@@ -76,6 +77,31 @@ function Matches() {
     e.stopPropagation();
     await startMatch(matchId);
     navigate(`/match/${matchId}`);
+  };
+
+  const handleDeleteMatch = async (e, match) => {
+    e.stopPropagation();
+    const fixture = `${teamName(match.home_team_id)} vs ${teamName(match.away_team_id)}`;
+    if (!window.confirm(
+      `Delete ${fixture}?\n\nThis permanently removes its score, events, lineup and stats.`
+    )) return;
+    setError('');
+    try {
+      await deleteMatch(match.id);
+      setMatches(current => current.filter(item => item.id !== match.id));
+      setMatchTop(current => {
+        const next = { ...current };
+        delete next[match.id];
+        return next;
+      });
+      setMatchSets(current => {
+        const next = { ...current };
+        delete next[match.id];
+        return next;
+      });
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not delete the match.');
+    }
   };
 
   const handleMatchClick = async (match) => {
@@ -211,6 +237,14 @@ function Matches() {
               }}>
               👁
             </button>
+            {canDeleteMatch && (
+              <button style={styles.deleteBtn}
+                aria-label="Delete match"
+                title="Delete match"
+                onClick={(e) => handleDeleteMatch(e, match)}>
+                ✕
+              </button>
+            )}
           </div>
         </div>
 
@@ -234,6 +268,7 @@ function Matches() {
           </div>
         )}
       </div>
+
     );
   };
 
@@ -292,6 +327,8 @@ function Matches() {
           {error && <p style={styles.error}>{error}</p>}
         </div>
       )}
+
+      {error && !showForm && <p role="alert" style={styles.error}>{error}</p>}
 
       {activeDivisions.length > 0 && (
         <div style={styles.filterRow}>
@@ -409,6 +446,11 @@ const styles = {
     padding: '5px 10px', background: 'transparent', color: '#888',
     border: '1px solid #333', borderRadius: '6px',
     cursor: 'pointer', fontSize: '14px',
+  },
+  deleteBtn: {
+    padding: '5px 9px', background: 'transparent', color: '#e86a63',
+    border: '1px solid #633', borderRadius: '6px', cursor: 'pointer',
+    fontSize: '12px', fontWeight: '700',
   },
   topPerformers: {
     display: 'flex', gap: '8px', flexWrap: 'wrap',
