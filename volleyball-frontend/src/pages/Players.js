@@ -52,6 +52,19 @@ function Players() {
     : filter === 'competitive' ? players.filter(p => !p.is_recreational)
     : players.filter(p => p.is_recreational);
 
+  const orderedPlayers = [...filtered].sort((a, b) => {
+    const teamA = teams.find(t => t.id === a.team_id);
+    const teamB = teams.find(t => t.id === b.team_id);
+    const divisionA = DIVISIONS.indexOf(teamA?.division);
+    const divisionB = DIVISIONS.indexOf(teamB?.division);
+    const rankA = divisionA === -1 ? DIVISIONS.length : divisionA;
+    const rankB = divisionB === -1 ? DIVISIONS.length : divisionB;
+    return rankA - rankB
+      || (teamA?.name || '').localeCompare(teamB?.name || '')
+      || Number(b.is_captain) - Number(a.is_captain)
+      || a.name.localeCompare(b.name);
+  });
+
   const handleSelectPlayer = async (player) => {
     if (selectedPlayer?.id === player.id) {
       setSelectedPlayer(null);
@@ -115,6 +128,7 @@ function Players() {
         </div>
         <div>
           <div style={styles.statsName}>{selectedPlayer.name}</div>
+          {selectedPlayer.is_captain && <span style={styles.captainBadge}>Captain</span>}
           <div style={styles.statsMeta}>
             {selectedPlayer.position ?? 'No position'}
             {selectedPlayer.jersey_number ? ` · #${selectedPlayer.jersey_number}` : ''}
@@ -294,7 +308,7 @@ function Players() {
 
       {mobile ? (
         <div>
-          {filtered.map(player => (
+          {orderedPlayers.map(player => (
             <div key={player.id}>
               <div
                 style={{
@@ -304,6 +318,7 @@ function Players() {
                 onClick={() => handleSelectPlayer(player)}>
                 <div style={styles.playerMain}>
                   <strong style={styles.playerName}>{player.name}</strong>
+                  {player.is_captain && <span style={styles.captainBadge}>Captain</span>}
                   {player.jersey_number && (
                     <span style={styles.badge}>#{player.jersey_number}</span>
                   )}
@@ -328,12 +343,12 @@ function Players() {
               )}
             </div>
           ))}
-          {filtered.length === 0 && <p style={styles.empty}>No players yet.</p>}
+          {orderedPlayers.length === 0 && <p style={styles.empty}>No players yet.</p>}
         </div>
       ) : (
         <div style={styles.layout}>
           <div style={styles.list}>
-            {filtered.map(player => (
+            {orderedPlayers.map(player => (
               <div key={player.id}
                 style={{
                   ...styles.playerCard,
@@ -342,6 +357,7 @@ function Players() {
                 onClick={() => handleSelectPlayer(player)}>
                 <div style={styles.playerMain}>
                   <strong style={styles.playerName}>{player.name}</strong>
+                  {player.is_captain && <span style={styles.captainBadge}>Captain</span>}
                   {player.jersey_number && (
                     <span style={styles.badge}>#{player.jersey_number}</span>
                   )}
@@ -355,7 +371,7 @@ function Players() {
                 </div>
               </div>
             ))}
-            {filtered.length === 0 && <p style={styles.empty}>No players yet.</p>}
+            {orderedPlayers.length === 0 && <p style={styles.empty}>No players yet.</p>}
           </div>
           {selectedPlayer && <StatsPanel />}
         </div>
@@ -412,6 +428,11 @@ const styles = {
   recBadge: {
     background: '#1a3a1a', color: '#4caf50',
     padding: '1px 6px', borderRadius: '10px', fontSize: '11px',
+  },
+  captainBadge: {
+    background: '#F5C800', color: '#111', padding: '2px 7px',
+    borderRadius: '10px', fontSize: '9px', fontWeight: '800',
+    textTransform: 'uppercase', letterSpacing: '0.03em',
   },
   playerMeta: { color: '#666', fontSize: '12px' },
   statsPanel: {

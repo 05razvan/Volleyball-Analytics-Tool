@@ -20,7 +20,7 @@ def get_players(team_id: Optional[int] = None,
     query = db.query(Player)
     if team_id:
         query = query.filter(Player.team_id == team_id)
-    return query.all()
+    return query.order_by(Player.name).all()
 
 @router.get("/{player_id}", response_model=PlayerResponse)
 def get_player(player_id: int, db: Session = Depends(get_db)):
@@ -106,26 +106,15 @@ def promote_captain(player_id: int,
         if not team or team.id != player.team_id:
             raise HTTPException(status_code=403,
                 detail="You can only promote players on your own team")
-    # demote existing captain on this team first
+    # A roster captain is a team designation and does not require a login.
     team_players = db.query(Player).filter(
         Player.team_id == player.team_id).all()
     for tp in team_players:
-        if tp.user_id and tp.id != player_id:
-            existing = db.query(User).filter(
-                User.id == tp.user_id,
-                User.role == "captain"
-            ).first()
-            if existing:
-                existing.role = "player"
-    if not player.user_id:
-        raise HTTPException(status_code=400,
-            detail="This player has no account to promote")
-    user = db.query(User).filter(User.id == player.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.role = "captain"
+        if tp.id != player_id:
+            tp.is_captain = False
+    player.is_captain = True
     db.commit()
-    return {"message": f"{user.name} is now captain"}
+    return {"message": f"{player.name} is now team captain"}
 
 @router.post("/{player_id}/remove-from-team")
 def remove_from_team(player_id: int,
@@ -145,5 +134,6 @@ def remove_from_team(player_id: int,
             raise HTTPException(status_code=403,
                 detail="You can only remove players from your own team")
     player.team_id = None
+    player.is_captain = False
     db.commit()
     return {"message": "Player removed from team"}

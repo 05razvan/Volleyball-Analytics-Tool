@@ -18,7 +18,7 @@ from routers.matches import (
     undo_last_event,
 )
 from routers.analytics import home_away_analytics, rotation_analytics
-from routers.players import PlayerProfileUpdate, update_player_profile
+from routers.players import PlayerProfileUpdate, promote_captain, update_player_profile
 from schemas import MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
@@ -259,6 +259,40 @@ def test_admin_can_edit_player_name_and_clear_details(lineup_data):
     assert updated.name == "New Name"
     assert updated.jersey_number is None
     assert updated.position is None
+
+
+def test_player_without_account_can_be_named_team_captain(lineup_data):
+    db, admin, _, players, _ = lineup_data
+    players[0].is_captain = True
+    db.commit()
+
+    response = promote_captain(players[1].id, db, admin)
+
+    db.refresh(players[0])
+    db.refresh(players[1])
+    assert players[0].is_captain is False
+    assert players[1].is_captain is True
+    assert response == {"message": "Player 2 is now team captain"}
+
+
+def test_roster_captain_badge_does_not_change_login_permissions(lineup_data):
+    db, admin, _, players, _ = lineup_data
+    player_user = User(
+        email="player@example.com",
+        hashed_password="unused",
+        name="Player 1",
+        role="player",
+    )
+    db.add(player_user)
+    db.flush()
+    players[0].user_id = player_user.id
+    db.commit()
+
+    promote_captain(players[0].id, db, admin)
+
+    db.refresh(player_user)
+    assert players[0].is_captain is True
+    assert player_user.role == "player"
 
 
 def test_league_match_rejects_team_from_another_division(lineup_data):

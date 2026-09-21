@@ -19,6 +19,7 @@ class PlayerCreate(BaseModel):
     position: Optional[str] = None
     team_id: Optional[int] = None
     is_recreational: bool = False
+    is_captain: bool = False
 
 class PlayerResponse(BaseModel):
     id: int
@@ -28,6 +29,7 @@ class PlayerResponse(BaseModel):
     team_id: Optional[int]
     is_recreational: bool
     is_private: bool = False
+    is_captain: bool = False
     class Config:
         from_attributes = True
 

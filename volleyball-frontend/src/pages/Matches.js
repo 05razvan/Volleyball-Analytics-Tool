@@ -107,6 +107,11 @@ function Matches() {
       ? match.away_team_id : match.home_team_id;
     return teams.find(t => t.id === oppId);
   };
+  const matchTypeStyle = (type) => ({
+    league: { background: '#17351f', color: '#78d991' },
+    cup: { background: '#3a3010', color: '#F5C800' },
+    friendly: { background: '#172d46', color: '#78bfff' },
+  }[type] || { background: '#2a2a2a', color: '#ccc' });
 
   const filtered = divisionFilter
     ? matches.filter(m => {
@@ -175,7 +180,9 @@ function Matches() {
             )}
 
             <div style={styles.meta}>
-              <span style={styles.typeLabel}>{match.match_type || 'league'}</span>
+              <span style={{ ...styles.typeLabel, ...matchTypeStyle(match.match_type || 'league') }}>
+                {match.match_type || 'league'}
+              </span>
               {new Date(match.date).toLocaleDateString('en-GB', {
                 weekday: 'short', day: 'numeric', month: 'short',
                 hour: '2-digit', minute: '2-digit'
@@ -388,7 +395,7 @@ const styles = {
   meta: { color: '#888', fontSize: '11px' },
   typeLabel: {
     display: 'inline-block', marginRight: '6px', padding: '1px 5px',
-    borderRadius: '4px', background: '#302b12', color: '#F5C800',
+    borderRadius: '4px',
     fontSize: '9px', fontWeight: '700', textTransform: 'uppercase',
   },
   liveBadge: { color: '#ff6b6b', fontWeight: '700', fontSize: '12px' },

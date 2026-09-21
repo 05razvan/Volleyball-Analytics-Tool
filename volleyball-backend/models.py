@@ -46,6 +46,7 @@ class Player(Base):
     position = Column(String, nullable=True)
     is_recreational = Column(Boolean, default=False)
     is_private = Column(Boolean, default=False)
+    is_captain = Column(Boolean, nullable=False, default=False, server_default="false")
     team = relationship("Team", back_populates="players", foreign_keys=[team_id])
     user = relationship("User", back_populates="player", foreign_keys=[user_id])
 

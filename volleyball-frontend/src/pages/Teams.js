@@ -37,7 +37,8 @@ function Teams() {
   };
 
   const grouped = DIVISIONS.reduce((acc, div) => {
-    acc[div] = teams.filter(t => t.division === div);
+    acc[div] = teams.filter(t => t.division === div)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     return acc;
   }, {});
 
@@ -80,7 +81,7 @@ function Teams() {
               <div key={team.id} style={styles.teamCard}
                 onClick={() => navigate(`/teams/${team.id}`)}>
                 <strong style={styles.teamName}>{team.name}</strong>
-                <span style={styles.viewBtn}>→</span>
+                <span style={styles.viewBtn}>View roster →</span>
               </div>
             ))}
           </div>
@@ -130,7 +131,7 @@ const styles = {
     border: '1px solid #2a2a2a', marginBottom: '8px', cursor: 'pointer',
   },
   teamName: { color: '#f0f0f0', fontSize: '15px' },
-  viewBtn: { color: '#F5C800', fontSize: '16px' },
+  viewBtn: { color: '#F5C800', fontSize: '12px', fontWeight: '600' },
   empty: { color: '#555', fontSize: '14px' },
 };
 

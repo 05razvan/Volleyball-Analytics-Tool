@@ -9,17 +9,25 @@ import os
 
 Base.metadata.create_all(bind=engine)
 
-def ensure_match_type_column():
-    """Add the match type to databases created before this field existed."""
-    columns = {column["name"] for column in inspect(engine).get_columns("matches")}
-    if "match_type" not in columns:
+def ensure_schema_columns():
+    """Add newer fields to databases created before they existed."""
+    match_columns = {column["name"] for column in inspect(engine).get_columns("matches")}
+    if "match_type" not in match_columns:
         with engine.begin() as connection:
             connection.execute(text(
                 "ALTER TABLE matches ADD COLUMN match_type VARCHAR "
                 "NOT NULL DEFAULT 'league'"
             ))
 
-ensure_match_type_column()
+    player_columns = {column["name"] for column in inspect(engine).get_columns("players")}
+    if "is_captain" not in player_columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE players ADD COLUMN is_captain BOOLEAN "
+                "NOT NULL DEFAULT false"
+            ))
+
+ensure_schema_columns()
 
 def seed_admin():
     admin_password = os.environ.get("ADMIN_PASSWORD")

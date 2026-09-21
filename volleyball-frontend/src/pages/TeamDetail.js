@@ -66,7 +66,8 @@ function TeamDetail() {
     if (!window.confirm('Promote this player to captain?')) return;
     try {
       await promoteCaptain(playerId);
-      setMsg('Player promoted to captain.');
+      setMsg('Team captain updated. No player account is required for this badge.');
+      setSelectedPlayer(current => current ? { ...current, is_captain: true } : current);
       load();
     } catch (err) {
       setMsg(err.response?.data?.detail || 'Something went wrong.');
@@ -118,8 +119,8 @@ function TeamDetail() {
           <div style={styles.playerMeta}>
             {player.position ?? 'No position'}
             {player.jersey_number ? ` · #${player.jersey_number}` : ''}
-            {player.user_role === 'captain' && (
-              <span style={styles.captainBadge}> C</span>
+            {player.is_captain && (
+              <span style={styles.captainBadge}>Captain</span>
             )}
           </div>
         </div>
@@ -155,10 +156,10 @@ function TeamDetail() {
         </div>
       )}
 
-      {isCoachOrAdmin && (
+      {(role === 'coach' || role === 'admin') && (
         <div style={styles.coachActions}>
           <button style={styles.promoteBtn} onClick={() => handlePromote(player.id)}>
-            ⭐ Captain
+            {player.is_captain ? '★ Team captain' : '☆ Make captain'}
           </button>
           <button style={styles.removeBtn} onClick={() => handleRemove(player.id)}>
             ✕ Remove
@@ -222,7 +223,7 @@ function TeamDetail() {
                 <div style={styles.playerCardMain}>
                   <span style={styles.playerName}>{p.name}</span>
                   {p.jersey_number && <span style={styles.badge}>#{p.jersey_number}</span>}
-                  {p.user_role === 'captain' && <span style={styles.captainBadge}>C</span>}
+                  {p.is_captain && <span style={styles.captainBadge}>Captain</span>}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={styles.position}>{p.position ?? 'No position'}</span>
@@ -254,7 +255,7 @@ function TeamDetail() {
                 <div style={styles.playerCardMain}>
                   <span style={styles.playerName}>{p.name}</span>
                   {p.jersey_number && <span style={styles.badge}>#{p.jersey_number}</span>}
-                  {p.user_role === 'captain' && <span style={styles.captainBadge}>C</span>}
+                  {p.is_captain && <span style={styles.captainBadge}>Captain</span>}
                 </div>
                 <span style={styles.position}>{p.position ?? 'No position'}</span>
               </div>
@@ -307,8 +308,9 @@ const styles = {
     padding: '1px 7px', borderRadius: '10px', fontSize: '11px',
   },
   captainBadge: {
-    background: '#F5C800', color: '#111', padding: '1px 6px',
-    borderRadius: '10px', fontSize: '10px', fontWeight: '700',
+    background: '#F5C800', color: '#111', padding: '2px 7px',
+    borderRadius: '10px', fontSize: '9px', fontWeight: '800',
+    textTransform: 'uppercase', letterSpacing: '0.03em',
   },
   position: { color: '#666', fontSize: '12px' },
   placeholder: {

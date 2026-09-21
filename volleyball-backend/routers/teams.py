@@ -61,11 +61,12 @@ def get_team_players(team_id: int,
             "position": p.position,
             "is_recreational": p.is_recreational,
             "is_private": p.is_private,
+            "is_captain": p.is_captain,
             "team_id": p.team_id,
             "user_id": p.user_id,
             "user_role": user_role,
         })
     result.sort(key=lambda x: (
-        0 if x["user_role"] == "captain" else 1, x["name"]
+        0 if x["is_captain"] else 1, x["name"]
     ))
     return result

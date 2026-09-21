@@ -901,7 +901,10 @@ function LiveMatch() {
 
           {!subMode && (
             <>
-            <button style={m.passingToggle} onClick={togglePassing}>
+            <button style={{
+              ...m.passingToggle,
+              ...(passingEnabled ? m.passingToggleOn : {}),
+            }} onClick={togglePassing}>
               Passing ratings: {passingEnabled ? 'ON' : 'OFF'}
             </button>
             {passingEnabled && (
@@ -1114,12 +1117,18 @@ function LiveMatch() {
         </div>
 
         <div style={s.eventPanel}>
-          <div style={s.panelTitle}>
+          <div style={{
+            ...s.panelTitle,
+            ...(selectedPlayer ? s.panelTitleSelected : {}),
+          }}>
             {subMode ? 'Tap ⇄ to select who comes off'
               : selectedPlayer ? `Logging for ${selectedPlayer.name}`
               : 'Tap a player on the left'}
           </div>
-          <button style={s.passingToggle} onClick={togglePassing}>
+          <button style={{
+            ...s.passingToggle,
+            ...(passingEnabled ? s.passingToggleOn : {}),
+          }} onClick={togglePassing}>
             Passing ratings: {passingEnabled ? 'ON' : 'OFF'}
           </button>
           {passingEnabled && (
@@ -1156,7 +1165,7 @@ function LiveMatch() {
                         cursor: (selectedPlayer&&!subMode&&canUseGroup)
                           ? 'pointer' : 'not-allowed',
                       }}
-                      disabled={eventSaving}
+                      disabled={!selectedPlayer || subMode || !canUseGroup || eventSaving}
                       onClick={() => !subMode && !eventSaving && handleEvent(ev.type)}>
                       <span>{ev.label}</span>
                       {ev.points==='us' &&
@@ -1243,8 +1252,8 @@ const s = {
   servingUs: { fontSize: '10px', color: '#2ecc71', fontWeight: '600' },
   servingThem: { fontSize: '10px', color: '#e74c3c', fontWeight: '600' },
   setPill: { fontSize: '10px', background: '#2a2a4a', padding: '2px 6px', borderRadius: '8px', color: '#aaa' },
-  ourBtn: { padding: '5px 10px', background: '#1a5e38', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '10px', fontWeight: '600' },
-  opponentBtn: { padding: '5px 10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '10px', fontWeight: '600' },
+  ourBtn: { padding: '8px 14px', background: '#1f7a49', color: 'white', border: '1px solid #32a867', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
+  opponentBtn: { padding: '8px 14px', background: '#a52b22', color: 'white', border: '1px solid #d54a3e', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
   controls: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: '#141428', borderBottom: '1px solid #2a2a4a' },
   undoBtn: { padding: '5px 10px', background: '#2a2a4a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' },
   undoMsg: { fontSize: '10px', color: '#2ecc71' },
@@ -1264,7 +1273,8 @@ const s = {
   rotPosLabel: { fontSize: '7px', color: '#555', fontWeight: '600' },
   rotName: { fontSize: '8px', color: '#ccc', fontWeight: '600', marginTop: '1px' },
   rotServeTag: { fontSize: '6px', color: '#2ecc71', fontWeight: '700' },
-  panelTitle: { fontSize: '9px', color: '#F5C800', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '7px', fontWeight: '600' },
+  panelTitle: { fontSize: '11px', color: '#777', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px', fontWeight: '700', padding: '9px 11px', background: '#171728', border: '1px solid #292942', borderRadius: '8px' },
+  panelTitleSelected: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
   playerSlot: { display: 'flex', alignItems: 'stretch', gap: '3px', marginBottom: '4px' },
   playerBtn: { flex: 1, padding: '6px 7px', background: '#1e1e38', color: 'white', border: '1px solid #2a2a4a', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '1px' },
   playerBtnTop: { display: 'flex', gap: '3px', alignItems: 'center', marginBottom: '1px' },
@@ -1284,10 +1294,11 @@ const s = {
   eventGroup: { marginBottom: '14px' },
   eventGroupLabel: { fontSize: '10px', color: '#F5C800', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' },
   serverOnlyHint: { color: '#888', fontWeight: '400', textTransform: 'none' },
-  eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '8px' },
-  passingToggle: { marginBottom: '10px', padding: '7px 10px', color: '#F5C800', background: '#20202f', border: '1px solid #555', borderRadius: '7px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' },
+  eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' },
+  passingToggle: { marginBottom: '12px', padding: '10px 12px', color: '#aaa', background: '#20202f', border: '1px solid #555', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' },
+  passingToggleOn: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
   trackingError: { padding: '9px 14px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '12px', textAlign: 'center' },
-  eventBtn: { padding: '14px 8px', border: 'none', borderRadius: '10px', cursor: 'pointer', color: 'white', fontWeight: '700', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minHeight: '60px', justifyContent: 'center' },
+  eventBtn: { padding: '17px 10px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '11px', cursor: 'pointer', color: 'white', fontWeight: '800', fontSize: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minHeight: '70px', justifyContent: 'center', boxShadow: '0 3px 8px rgba(0,0,0,0.22)' },
   pointHint: { fontSize: '9px', fontWeight: '400', opacity: 0.8 },
   lastEvent: { fontSize: '11px', color: '#aaa', padding: '6px 10px', background: '#1a1a2e', borderRadius: '6px', display: 'inline-block', marginTop: '8px' },
   empty: { color: '#555', fontSize: '13px' },
@@ -1304,8 +1315,8 @@ const m = {
   scoreMid: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '120px' },
   scoreSet: { fontSize: '12px', fontWeight: '700', color: '#ccc' },
   ptRow: { display: 'flex', gap: '5px', marginTop: '3px' },
-  ptUs: { padding: '5px 10px', background: '#1a5e38', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
-  ptThem: { padding: '5px 10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
+  ptUs: { padding: '7px 12px', background: '#1f7a49', color: 'white', border: '1px solid #32a867', borderRadius: '7px', cursor: 'pointer', fontSize: '11px', fontWeight: '800' },
+  ptThem: { padding: '7px 12px', background: '#a52b22', color: 'white', border: '1px solid #d54a3e', borderRadius: '7px', cursor: 'pointer', fontSize: '11px', fontWeight: '800' },
   courtSection: { background: '#141428', padding: '8px 10px 4px', flexShrink: 0 },
   courtNet: { textAlign: 'center', fontSize: '9px', color: '#F5C800', fontWeight: '700', letterSpacing: '0.15em', marginBottom: '5px' },
   courtRow: { display: 'flex', gap: '5px', marginBottom: '5px' },
@@ -1332,10 +1343,10 @@ const m = {
   benchNum: { fontSize: '9px', color: '#F5C800', marginTop: '1px' },
   cancelSubBtn: { padding: '6px 12px', background: 'transparent', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' },
   statSection: { flex: 1, display: 'flex', flexDirection: 'column', padding: '6px 10px', overflow: 'hidden' },
-  statBanner: { fontSize: '12px', color: '#ccc', marginBottom: '6px', minHeight: '20px', display: 'flex', alignItems: 'center', gap: '5px' },
+  statBanner: { fontSize: '12px', color: '#ccc', marginBottom: '7px', minHeight: '24px', display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 8px', background: '#171728', borderRadius: '7px', border: '1px solid #292942' },
   clearBtn: { background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '14px', marginLeft: '4px', padding: '0' },
-  statGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px', flex: 1 },
-  statBtn: { border: 'none', borderRadius: '10px', cursor: 'pointer', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6px 4px' },
+  statGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', flex: 1 },
+  statBtn: { border: '1px solid rgba(255,255,255,0.14)', borderRadius: '10px', cursor: 'pointer', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 4px', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' },
   statBtnLabel: { fontSize: '12px', fontWeight: '700', lineHeight: 1 },
   statBtnPts: { fontSize: '9px', fontWeight: '400', opacity: 0.8, marginTop: '2px' },
   lastEventBar: { fontSize: '10px', color: '#2ecc71', marginTop: '4px', padding: '4px 8px', background: '#0a2a0a', borderRadius: '6px' },
@@ -1344,6 +1355,7 @@ const m = {
   endSetBtn: { flex: 1, padding: '10px', background: '#d35400', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
   endMatchBtn: { flex: 1, padding: '10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
   passingToggle: { width: '100%', padding: '8px', marginBottom: '8px', color: '#F5C800', background: '#20202f', border: '1px solid #555', borderRadius: '7px', fontSize: '11px', fontWeight: '600' },
+  passingToggleOn: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
   passGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' },
   passBtn: { padding: '10px 3px', color: 'white', background: '#246b63', border: 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700' },
   actionError: { padding: '8px 10px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '11px', textAlign: 'center' },
