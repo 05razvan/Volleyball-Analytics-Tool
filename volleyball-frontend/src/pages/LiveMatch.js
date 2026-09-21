@@ -53,12 +53,12 @@ const EVENT_GROUPS = [
       { type: 'kill',       label: 'Kill',     color: '#27ae60', points: 'us'  },
       { type: 'kill_block', label: 'Kill Blk', color: '#8e44ad', points: 'us'  },
       { type: 'spike',      label: 'Spike',    color: '#2c3e50', points: null  },
-      { type: 'block',      label: 'Block',    color: '#d35400', points: null  },
     ]
   },
   {
     label: 'Defence',
     events: [
+      { type: 'block',  label: 'Block',  color: '#d35400', points: null },
       { type: 'dig',    label: 'Dig',    color: '#16a085', points: null },
       { type: 'assist', label: 'Assist', color: '#7f8c8d', points: null },
     ]
