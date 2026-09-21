@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadStoredToken, setAuthToken, getRole, isLoggedIn } from './auth';
 import Teams from './pages/Teams';
 import Players from './pages/Players';
@@ -30,11 +30,18 @@ function Nav({ loggedIn, onLogout }) {
   const name = localStorage.getItem('name') || '';
   const [menuOpen, setMenuOpen] = useState(false);
 
-  if (location.pathname === '/login' || location.pathname === '/') return null;
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  if (location.pathname === '/login') return null;
 
   const pageName = Object.entries(PAGE_NAMES).find(
     ([path]) => location.pathname.startsWith(path)
-  )?.[1] ?? '';
+  )?.[1] ?? (location.pathname === '/' ? 'Teams' : '');
+
+  const isActive = (path) => location.pathname.startsWith(path) ||
+    (path === '/teams' && location.pathname === '/');
 
   const navLinks = [
     { to: '/teams', label: 'Teams' },
@@ -51,12 +58,12 @@ function Nav({ loggedIn, onLogout }) {
         {navLinks.map(l => (
           <Link key={l.to} to={l.to} style={{
             ...styles.link,
-            ...(location.pathname.startsWith(l.to) ? styles.linkActive : {})
+            ...(isActive(l.to) ? styles.linkActive : {})
           }}>{l.label}</Link>
         ))}
       </div>
 
-      <div style={styles.navRight}>
+      <div className="nav-account" style={styles.navRight}>
         {loggedIn ? (
           <>
             {role === 'admin' && (
@@ -87,7 +94,7 @@ function Nav({ loggedIn, onLogout }) {
             <Link key={l.to} to={l.to}
               style={{
                 ...styles.mobileLink,
-                ...(location.pathname.startsWith(l.to) ? styles.mobileLinkActive : {})
+                ...(isActive(l.to) ? styles.mobileLinkActive : {})
               }}
               onClick={() => setMenuOpen(false)}>
               {l.label}
@@ -142,6 +149,7 @@ function AppInner() {
         .hamburger-btn { display: none !important; }
         @media (max-width: 600px) {
           .desktop-nav { display: none !important; }
+          .nav-account { display: none !important; }
           .hamburger-btn { display: flex !important; }
         }
         @media (max-width: 600px) {
