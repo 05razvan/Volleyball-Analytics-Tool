@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getTeams, createTeam } from '../api';
+import { getTeams, createTeam, deleteTeam } from '../api';
 import { getRole } from '../auth';
 
 const DIVISIONS = [
@@ -33,6 +33,20 @@ function Teams() {
       setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong.');
+    }
+  };
+
+  const handleDelete = async (event, team) => {
+    event.stopPropagation();
+    if (!window.confirm(
+      `Delete ${team.name}?\n\nThis permanently deletes its players, matches and statistics. Other teams are not affected.`
+    )) return;
+    setError('');
+    try {
+      await deleteTeam(team.id);
+      setTeams(current => current.filter(item => item.id !== team.id));
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not delete the team.');
     }
   };
 
@@ -71,6 +85,8 @@ function Teams() {
         </div>
       )}
 
+      {error && !showForm && <p role="alert" style={styles.error}>{error}</p>}
+
       {DIVISIONS.map(div => {
         const divTeams = grouped[div];
         if (!divTeams || divTeams.length === 0) return null;
@@ -81,7 +97,15 @@ function Teams() {
               <div key={team.id} style={styles.teamCard}
                 onClick={() => navigate(`/teams/${team.id}`)}>
                 <strong style={styles.teamName}>{team.name}</strong>
-                <span style={styles.viewBtn}>View roster →</span>
+                <div style={styles.teamActions}>
+                  <span style={styles.viewBtn}>View roster →</span>
+                  {role === 'admin' && (
+                    <button style={styles.deleteBtn}
+                      onClick={event => handleDelete(event, team)}>
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -131,7 +155,13 @@ const styles = {
     border: '1px solid #2a2a2a', marginBottom: '8px', cursor: 'pointer',
   },
   teamName: { color: '#f0f0f0', fontSize: '15px' },
+  teamActions: { display: 'flex', alignItems: 'center', gap: '12px' },
   viewBtn: { color: '#F5C800', fontSize: '12px', fontWeight: '600' },
+  deleteBtn: {
+    padding: '5px 9px', background: 'transparent', color: '#e86a63',
+    border: '1px solid #633', borderRadius: '6px', cursor: 'pointer',
+    fontSize: '11px', fontWeight: '700',
+  },
   empty: { color: '#555', fontSize: '14px' },
 };
 

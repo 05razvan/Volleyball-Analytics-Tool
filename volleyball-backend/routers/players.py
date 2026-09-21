@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
-from models import Player, User, Team
+from models import Availability, MatchEvent, MatchLineup, MatchSubstitution, Player, User, Team
 from schemas import PlayerCreate, PlayerResponse
 from auth import get_current_user, require_admin
 from pydantic import BaseModel
@@ -85,9 +85,19 @@ def delete_player(player_id: int,
     player = db.query(Player).filter(Player.id == player_id).first()
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
+    db.query(MatchEvent).filter(MatchEvent.player_id == player_id).update(
+        {MatchEvent.player_id: None}, synchronize_session=False)
+    db.query(MatchSubstitution).filter(
+        (MatchSubstitution.player_out_id == player_id) |
+        (MatchSubstitution.player_in_id == player_id)
+    ).delete(synchronize_session=False)
+    db.query(MatchLineup).filter(
+        MatchLineup.player_id == player_id).delete(synchronize_session=False)
+    db.query(Availability).filter(
+        Availability.player_id == player_id).delete(synchronize_session=False)
     db.delete(player)
     db.commit()
-    return {"message": "Player deleted"}
+    return {"message": "Player permanently deleted"}
 
 @router.post("/{player_id}/promote-captain")
 def promote_captain(player_id: int,

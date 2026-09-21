@@ -17,10 +17,12 @@ const api = {
 
 export const getTeams = () => api.get('/teams/');
 export const createTeam = (data) => api.post('/teams/', data);
+export const deleteTeam = (teamId) => api.delete(`/teams/${teamId}`);
 
 export const getPlayers = () => api.get('/players/');
 export const getPlayersByTeam = (teamId) => api.get(`/players/?team_id=${teamId}`);
 export const createPlayer = (data) => api.post('/players/', data);
+export const deletePlayer = (playerId) => api.delete(`/players/${playerId}`);
 
 export const getMatches = () => api.get('/matches/');
 export const createMatch = (data) => api.post('/matches/', data);

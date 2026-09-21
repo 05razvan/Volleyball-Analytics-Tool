@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPlayerAnalytics, promoteCaptain, removeFromTeam,
+import { deletePlayer, getPlayerAnalytics, promoteCaptain, removeFromTeam,
          updatePlayerProfile } from '../api';
 import { API_BASE_URL } from '../config';
 
@@ -86,6 +86,21 @@ function TeamDetail() {
     }
   };
 
+  const handleDelete = async (player) => {
+    if (!window.confirm(
+      `Permanently delete ${player.name}?\n\nTheir profile and personal statistics will be removed. Match and team totals will be preserved.`
+    )) return;
+    try {
+      await deletePlayer(player.id);
+      setMsg('Player permanently deleted.');
+      setSelectedPlayer(null);
+      setPlayerStats(null);
+      load();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || 'Could not delete the player.');
+    }
+  };
+
   const handleProfileSave = async () => {
     try {
       await updatePlayerProfile(selectedPlayer.id, {
@@ -164,6 +179,11 @@ function TeamDetail() {
           <button style={styles.removeBtn} onClick={() => handleRemove(player.id)}>
             ✕ Remove
           </button>
+          {role === 'admin' && (
+            <button style={styles.deleteBtn} onClick={() => handleDelete(player)}>
+              Delete permanently
+            </button>
+          )}
         </div>
       )}
 
@@ -312,6 +332,11 @@ const styles = {
     borderRadius: '10px', fontSize: '9px', fontWeight: '800',
     textTransform: 'uppercase', letterSpacing: '0.03em',
     display: 'inline-block', marginLeft: '8px', verticalAlign: 'middle',
+  },
+  deleteBtn: {
+    background: '#3a1717', border: '1px solid #7d2929', color: '#ff9b95',
+    padding: '6px 10px', borderRadius: '6px', cursor: 'pointer',
+    fontSize: '11px', fontWeight: '700',
   },
   position: { color: '#666', fontSize: '12px' },
   placeholder: {

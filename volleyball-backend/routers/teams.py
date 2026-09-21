@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Team, Player, User
+from models import (
+    Availability, Match, MatchEvent, MatchEventContext, MatchLineup,
+    MatchSubstitution, MatchTrackerState, Player, SetScore, Team,
+    TeamJoinRequest, User,
+)
 from schemas import TeamCreate, TeamResponse
 from auth import require_admin, get_optional_user
 from typing import List
@@ -24,6 +28,65 @@ def create_team(team: TeamCreate,
     db.commit()
     db.refresh(new_team)
     return new_team
+
+@router.delete("/{team_id}")
+def delete_team(team_id: int, db: Session = Depends(get_db),
+                current_user: User = Depends(require_admin)):
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    match_ids = [match_id for (match_id,) in db.query(Match.id).filter(
+        (Match.home_team_id == team_id) |
+        (Match.away_team_id == team_id) |
+        (Match.our_team_id == team_id)
+    ).all()]
+    player_ids = [player_id for (player_id,) in db.query(Player.id).filter(
+        Player.team_id == team_id).all()]
+
+    event_query = db.query(MatchEvent.id)
+    if match_ids:
+        event_query = event_query.filter(MatchEvent.match_id.in_(match_ids))
+        event_ids = [event_id for (event_id,) in event_query.all()]
+        if event_ids:
+            db.query(MatchEventContext).filter(
+                MatchEventContext.event_id.in_(event_ids)).delete(
+                    synchronize_session=False)
+        for model in (
+            MatchSubstitution, MatchTrackerState, MatchLineup,
+            Availability, SetScore, MatchEvent,
+        ):
+            db.query(model).filter(model.match_id.in_(match_ids)).delete(
+                synchronize_session=False)
+        db.query(Match).filter(Match.id.in_(match_ids)).delete(
+            synchronize_session=False)
+
+    if player_ids:
+        remaining_event_ids = [event_id for (event_id,) in
+            db.query(MatchEvent.id).filter(
+                MatchEvent.player_id.in_(player_ids)).all()]
+        if remaining_event_ids:
+            db.query(MatchEventContext).filter(
+                MatchEventContext.event_id.in_(remaining_event_ids)).delete(
+                    synchronize_session=False)
+        db.query(MatchSubstitution).filter(
+            (MatchSubstitution.player_out_id.in_(player_ids)) |
+            (MatchSubstitution.player_in_id.in_(player_ids))
+        ).delete(synchronize_session=False)
+        db.query(Availability).filter(
+            Availability.player_id.in_(player_ids)).delete(synchronize_session=False)
+        db.query(MatchLineup).filter(
+            MatchLineup.player_id.in_(player_ids)).delete(synchronize_session=False)
+        db.query(MatchEvent).filter(
+            MatchEvent.player_id.in_(player_ids)).delete(synchronize_session=False)
+        db.query(Player).filter(Player.id.in_(player_ids)).delete(
+            synchronize_session=False)
+
+    db.query(TeamJoinRequest).filter(
+        TeamJoinRequest.team_id == team_id).delete(synchronize_session=False)
+    db.delete(team)
+    db.commit()
+    return {"message": "Team, roster, and match history deleted"}
 
 @router.get("/{team_id}")
 def get_team(team_id: int, db: Session = Depends(get_db)):

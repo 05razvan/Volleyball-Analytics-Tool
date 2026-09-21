@@ -22,7 +22,10 @@ from routers.matches import (
     undo_last_event,
 )
 from routers.analytics import home_away_analytics, rotation_analytics
-from routers.players import PlayerProfileUpdate, promote_captain, update_player_profile
+from routers.players import (
+    PlayerProfileUpdate, delete_player, promote_captain, update_player_profile,
+)
+from routers.teams import delete_team
 from schemas import MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
@@ -119,6 +122,59 @@ def test_admin_can_delete_match_and_all_tracking_data(lineup_data):
     assert db.query(Availability).count() == 0
     assert db.query(SetScore).count() == 0
     assert db.query(Player).count() == 8
+
+
+def test_admin_can_delete_team_roster_and_matches(lineup_data):
+    db, admin, match, players, outsider = lineup_data
+    our_team_id = match.our_team_id
+    match_id = match.id
+    opponent_team_id = outsider.team_id
+    player_ids = [player.id for player in players]
+    outsider_id = outsider.id
+    db.add_all([
+        MatchLineup(match_id=match.id, player_id=players[0].id),
+        Availability(
+            match_id=match.id, player_id=players[0].id, status="available"),
+        SetScore(match_id=match.id, set_number=1, our_score=2, opponent_score=1),
+    ])
+    db.commit()
+
+    response = delete_team(our_team_id, db, admin)
+
+    assert response == {"message": "Team, roster, and match history deleted"}
+    assert db.query(Team).filter_by(id=our_team_id).first() is None
+    assert db.query(Player).filter(Player.id.in_(player_ids)).count() == 0
+    assert db.query(Match).filter_by(id=match_id).first() is None
+    assert db.query(MatchLineup).count() == 0
+    assert db.query(Availability).count() == 0
+    assert db.query(SetScore).count() == 0
+    assert db.query(Team).filter_by(id=opponent_team_id).first() is not None
+    assert db.query(Player).filter_by(id=outsider_id).first() is not None
+
+
+def test_admin_can_delete_player_without_changing_match_events(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    player = players[0]
+    event = MatchEvent(
+        match_id=match.id, player_id=player.id,
+        event_type="kill", set_number=1,
+    )
+    db.add_all([
+        event,
+        MatchLineup(match_id=match.id, player_id=player.id),
+        Availability(match_id=match.id, player_id=player.id, status="available"),
+    ])
+    db.commit()
+
+    response = delete_player(player.id, db, admin)
+
+    db.refresh(event)
+    assert response == {"message": "Player permanently deleted"}
+    assert db.query(Player).filter_by(id=player.id).first() is None
+    assert event.player_id is None
+    assert event.event_type == "kill"
+    assert db.query(MatchLineup).count() == 0
+    assert db.query(Availability).count() == 0
 
 
 @pytest.mark.parametrize(
