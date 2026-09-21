@@ -59,9 +59,14 @@ function Players() {
     const divisionB = DIVISIONS.indexOf(teamB?.division);
     const rankA = divisionA === -1 ? DIVISIONS.length : divisionA;
     const rankB = divisionB === -1 ? DIVISIONS.length : divisionB;
+    const positionA = POSITIONS.indexOf(a.position);
+    const positionB = POSITIONS.indexOf(b.position);
+    const positionRankA = positionA === -1 ? POSITIONS.length : positionA;
+    const positionRankB = positionB === -1 ? POSITIONS.length : positionB;
     return rankA - rankB
       || (teamA?.name || '').localeCompare(teamB?.name || '')
       || Number(b.is_captain) - Number(a.is_captain)
+      || positionRankA - positionRankB
       || a.name.localeCompare(b.name);
   });
 
