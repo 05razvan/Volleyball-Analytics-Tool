@@ -27,6 +27,15 @@ def ensure_schema_columns():
                 "NOT NULL DEFAULT false"
             ))
 
+    tracker_columns = {column["name"] for column in inspect(engine).get_columns(
+        "match_tracker_states")}
+    if "errors_enabled" not in tracker_columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE match_tracker_states ADD COLUMN errors_enabled BOOLEAN "
+                "NOT NULL DEFAULT false"
+            ))
+
 ensure_schema_columns()
 
 def seed_admin():

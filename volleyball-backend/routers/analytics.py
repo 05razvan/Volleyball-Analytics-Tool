@@ -153,7 +153,8 @@ def rotation_analytics(team_id: int, last_n: Optional[int] = None,
         ).all() if match_ids else []
         point_rows = [(event, context) for event, context in rows
                       if event.event_type in {"kill", "ace", "our_point", "kill_block",
-                                              "serve_error", "opponent_point"}]
+                                              "serve_error", "opponent_point",
+                                              "foot_fault", "net_touch"}]
         points_for = sum(1 for event, _ in point_rows
                          if event.event_type in {"kill", "ace", "our_point", "kill_block"})
         points_against = len(point_rows) - points_for
@@ -217,7 +218,8 @@ def home_away_analytics(team_id: int, last_n: Optional[int] = None,
         receive_points = [(event, context) for event, context in context_rows
                           if not context.we_were_serving and
                           event.event_type in {"kill", "our_point", "kill_block",
-                                               "serve_error", "opponent_point"}]
+                                               "serve_error", "opponent_point",
+                                               "foot_fault", "net_touch"}]
         sideouts = sum(event.event_type in {"kill", "our_point", "kill_block"}
                        for event, _ in receive_points)
         return {

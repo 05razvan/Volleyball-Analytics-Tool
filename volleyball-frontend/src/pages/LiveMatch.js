@@ -74,6 +74,11 @@ const PASS_RATINGS = [
   { rating: 3, label: 'Perfect Pass', shortLabel: 'Perfect', emoji: '⭐', color: '#27ae60' },
 ];
 
+const PLAYER_ERRORS = [
+  { type: 'foot_fault', label: 'Foot Fault', emoji: '👟', color: '#a93226' },
+  { type: 'net_touch', label: 'Net Touch', emoji: '🕸️', color: '#922b21' },
+];
+
 function rotateClockwise(positions) {
   return [positions[1], positions[2], positions[3], positions[4], positions[5], positions[0]];
 }
@@ -108,6 +113,7 @@ function LiveMatch() {
   const [savingLineup, setSavingLineup] = useState(false);
   const [rotationNumber, setRotationNumber] = useState(1);
   const [passingEnabled, setPassingEnabled] = useState(false);
+  const [errorsEnabled, setErrorsEnabled] = useState(false);
   const [showSpectatorQR, setShowSpectatorQR] = useState(false);
   const [eventSaving, setEventSaving] = useState(false);
 
@@ -143,6 +149,7 @@ function LiveMatch() {
             setWeAreServing(saved.we_are_serving);
             setRotationNumber(saved.rotation_number);
             setPassingEnabled(saved.passing_enabled);
+            setErrorsEnabled(saved.errors_enabled);
             if (saved.active_libero_swap) {
               const swap = saved.active_libero_swap;
               const middle = byId.get(swap.middle_id);
@@ -162,13 +169,15 @@ function LiveMatch() {
   const initials = (name) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
 
   const saveTrackerState = (nextPositions, nextBench, serving, rotation,
-                            passing = passingEnabled, swap = activeLiberoSwap) =>
+                            passing = passingEnabled, swap = activeLiberoSwap,
+                            errors = errorsEnabled) =>
     apiSaveTrackerState(matchId, {
       positions: nextPositions.map(player => player.id),
       bench: nextBench.map(player => player.id),
       we_are_serving: serving,
       rotation_number: rotation,
       passing_enabled: passing,
+      errors_enabled: errors,
       active_libero_swap: swap ? {
         posIndex: swap.posIndex,
         middle_id: swap.middle.id,
@@ -318,6 +327,7 @@ function LiveMatch() {
         we_are_serving: weAreServing,
         rotation_number: rotationNumber,
         passing_enabled: passingEnabled,
+        errors_enabled: errorsEnabled,
         active_libero_swap: activeLiberoSwap ? {
           posIndex: activeLiberoSwap.posIndex,
           middle_id: activeLiberoSwap.middle.id,
@@ -339,7 +349,10 @@ function LiveMatch() {
     setLastEvent({
       ...event,
       playerName: selectedPlayer?.name,
-      previousState: { positions, bench, activeLiberoSwap, weAreServing, rotationNumber },
+      previousState: {
+        positions, bench, activeLiberoSwap, weAreServing, rotationNumber,
+        passingEnabled, errorsEnabled,
+      },
     });
     const eventPlayer = selectedPlayer; // capture before clearing
     setSelectedPlayer(null);
@@ -370,8 +383,9 @@ function LiveMatch() {
       return;
     }
 
-    if (eventType === 'serve_error') {
-      if (eventPlayer && isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id) {
+    if (['serve_error', 'foot_fault', 'net_touch'].includes(eventType)) {
+      if (eventType === 'serve_error' && eventPlayer &&
+          isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id) {
         triggerLiberoPrompt(eventPlayer, 0);
       }
       setWeAreServing(false);
@@ -392,6 +406,8 @@ function LiveMatch() {
         bench: restored.bench.map(id => byId.get(id)).filter(Boolean),
         weAreServing: restored.we_are_serving,
         rotationNumber: restored.rotation_number,
+        passingEnabled: restored.passing_enabled,
+        errorsEnabled: restored.errors_enabled,
         activeLiberoSwap: restoredSwap ? {
           posIndex: restoredSwap.posIndex,
           middle: byId.get(restoredSwap.middle_id),
@@ -405,13 +421,16 @@ function LiveMatch() {
       setActiveLiberoSwap(previous.activeLiberoSwap);
       setWeAreServing(previous.weAreServing);
       setRotationNumber(previous.rotationNumber);
+      setPassingEnabled(previous.passingEnabled ?? passingEnabled);
+      setErrorsEnabled(previous.errorsEnabled ?? errorsEnabled);
       await apiSaveLineup(matchId, {
         on_court: previous.positions.map(p => p.id),
         bench: previous.bench.map(p => p.id),
       });
       await saveTrackerState(previous.positions, previous.bench,
         previous.weAreServing, previous.rotationNumber,
-        passingEnabled, previous.activeLiberoSwap);
+        previous.passingEnabled ?? passingEnabled, previous.activeLiberoSwap,
+        previous.errorsEnabled ?? errorsEnabled);
     }
     setLastEvent(null);
     setUndoMsg('✓');
@@ -492,6 +511,15 @@ function LiveMatch() {
     const enabled = !passingEnabled;
     setPassingEnabled(enabled);
     await saveTrackerState(positions, bench, weAreServing, rotationNumber, enabled);
+  };
+
+  const toggleErrors = async () => {
+    const enabled = !errorsEnabled;
+    setErrorsEnabled(enabled);
+    await saveTrackerState(
+      positions, bench, weAreServing, rotationNumber,
+      passingEnabled, activeLiberoSwap, enabled,
+    );
   };
 
   if (!score || !match) return <div style={s.loading}>Loading...</div>;
@@ -923,6 +951,28 @@ function LiveMatch() {
                 ))}
               </div>
             )}
+            <button style={{
+              ...m.passingToggle,
+              ...(errorsEnabled ? m.errorToggleOn : {}),
+            }} onClick={toggleErrors}>
+              Player errors: {errorsEnabled ? 'ON' : 'OFF'}
+            </button>
+            {errorsEnabled && (
+              <div style={m.errorGrid}>
+                {PLAYER_ERRORS.map(error => (
+                  <button key={error.type} style={{
+                    ...m.passBtn,
+                    background: error.color,
+                    opacity: selectedPlayer && !eventSaving ? 1 : 0.2,
+                    cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed',
+                  }}
+                    disabled={!selectedPlayer || eventSaving}
+                    onClick={() => selectedPlayer && handleEvent(error.type)}>
+                    <span>{error.emoji}</span> {error.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={m.statGrid}>
               {EVENT_GROUPS.map(group => {
                 const isServeGroup = group.label === 'Serve';
@@ -1145,6 +1195,29 @@ function LiveMatch() {
               ))}
             </div>
           )}
+          <button style={{
+            ...s.passingToggle,
+            ...(errorsEnabled ? s.errorToggleOn : {}),
+          }} onClick={toggleErrors}>
+            Player errors: {errorsEnabled ? 'ON' : 'OFF'}
+          </button>
+          {errorsEnabled && (
+            <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
+              {PLAYER_ERRORS.map(error => (
+                <button key={error.type} style={{
+                  ...s.eventBtn,
+                  background: error.color,
+                  opacity: selectedPlayer && !eventSaving ? 1 : 0.3,
+                  cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed',
+                }}
+                  disabled={!selectedPlayer || eventSaving}
+                  onClick={() => handleEvent(error.type)}>
+                  <span>{error.emoji} {error.label}</span>
+                  <span style={s.pointHint}>+1 {opponentName}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {EVENT_GROUPS.map(group => {
             const isServeGroup = group.label === 'Serve';
             const canUseGroup = !isServeGroup || selectedPlayer?.id === serverPlayer?.id;
@@ -1297,6 +1370,7 @@ const s = {
   eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' },
   passingToggle: { marginBottom: '12px', padding: '10px 12px', color: '#aaa', background: '#20202f', border: '1px solid #555', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' },
   passingToggleOn: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
+  errorToggleOn: { color: '#fff', background: '#7d2929', border: '1px solid #d54a3e' },
   trackingError: { padding: '9px 14px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '12px', textAlign: 'center' },
   eventBtn: { padding: '17px 10px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '11px', cursor: 'pointer', color: 'white', fontWeight: '800', fontSize: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minHeight: '70px', justifyContent: 'center', boxShadow: '0 3px 8px rgba(0,0,0,0.22)' },
   pointHint: { fontSize: '9px', fontWeight: '400', opacity: 0.8 },
@@ -1356,7 +1430,9 @@ const m = {
   endMatchBtn: { flex: 1, padding: '10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
   passingToggle: { width: '100%', padding: '8px', marginBottom: '8px', color: '#F5C800', background: '#20202f', border: '1px solid #555', borderRadius: '7px', fontSize: '11px', fontWeight: '600' },
   passingToggleOn: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
+  errorToggleOn: { color: '#fff', background: '#7d2929', border: '1px solid #d54a3e' },
   passGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px' },
+  errorGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '8px' },
   passBtn: { padding: '10px 3px', color: 'white', background: '#246b63', border: 'none', borderRadius: '7px', fontSize: '11px', fontWeight: '700' },
   actionError: { padding: '8px 10px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '11px', textAlign: 'center' },
 };

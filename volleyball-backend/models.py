@@ -11,7 +11,8 @@ DIVISIONS = [
 
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
 EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace",
-               "serve_error", "assist", "opponent_point", "our_point", "pass"]
+               "serve_error", "assist", "opponent_point", "our_point", "pass",
+               "foot_fault", "net_touch"]
 MATCH_TYPES = ["league", "cup", "friendly"]
 
 class User(Base):
@@ -118,6 +119,7 @@ class MatchTrackerState(Base):
     we_are_serving = Column(Boolean, nullable=False, default=False)
     rotation_number = Column(Integer, nullable=False, default=1)
     passing_enabled = Column(Boolean, nullable=False, default=False)
+    errors_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     active_libero_swap_json = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

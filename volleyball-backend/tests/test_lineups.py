@@ -13,6 +13,7 @@ from models import (
     MatchSubstitution, MatchTrackerState, Player, SetScore, Team, User,
 )
 from routers.matches import (
+    calculate_score,
     create_match,
     delete_match,
     get_spectator_snapshot,
@@ -228,7 +229,7 @@ def test_event_undo_restores_persisted_tracker_state(lineup_data):
     ids = [player.id for player in players]
     original = MatchTrackerStateUpdate(
         positions=ids[:6], bench=ids[6:], we_are_serving=False,
-        rotation_number=1, passing_enabled=True,
+        rotation_number=1, passing_enabled=True, errors_enabled=True,
     )
     save_tracker_state(match.id, original, db, admin)
     event = log_event(match.id, MatchEventCreate(
@@ -253,6 +254,23 @@ def test_event_undo_restores_persisted_tracker_state(lineup_data):
     saved = db.query(MatchTrackerState).filter_by(match_id=match.id).one()
     assert saved.rotation_number == 1
     assert saved.we_are_serving is False
+    assert saved.errors_enabled is True
+
+
+@pytest.mark.parametrize("event_type", ["foot_fault", "net_touch"])
+def test_player_errors_award_opponent_point(lineup_data, event_type):
+    db, admin, match, players, _ = lineup_data
+
+    log_event(match.id, MatchEventCreate(
+        match_id=match.id,
+        player_id=players[0].id,
+        event_type=event_type,
+        set_number=1,
+        rotation_number=1,
+        we_are_serving=True,
+    ), db, admin)
+
+    assert calculate_score(match.id, 1, db) == (0, 1)
 
 
 def test_rejects_invalid_pass_rating(lineup_data):

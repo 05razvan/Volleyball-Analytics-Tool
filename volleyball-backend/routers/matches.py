@@ -32,7 +32,7 @@ import json
 router = APIRouter(prefix="/matches", tags=["matches"])
 
 POINTS_FOR_US = {"kill", "ace", "our_point", "kill_block"}
-POINTS_FOR_THEM = {"serve_error", "opponent_point"}
+POINTS_FOR_THEM = {"serve_error", "opponent_point", "foot_fault", "net_touch"}
 
 def team_gender(team: Team):
     if team.division.startswith("Men's"):
@@ -225,6 +225,7 @@ def undo_last_event(match_id: int, db: Session = Depends(get_db),
         state.we_are_serving = restored_state["we_are_serving"]
         state.rotation_number = restored_state["rotation_number"]
         state.passing_enabled = restored_state.get("passing_enabled", False)
+        state.errors_enabled = restored_state.get("errors_enabled", False)
         state.active_libero_swap_json = json.dumps(
             restored_state.get("active_libero_swap")
         ) if restored_state.get("active_libero_swap") else None
@@ -384,6 +385,7 @@ def save_tracker_state(match_id: int, data: MatchTrackerStateUpdate,
     state.we_are_serving = data.we_are_serving
     state.rotation_number = data.rotation_number
     state.passing_enabled = data.passing_enabled
+    state.errors_enabled = data.errors_enabled
     state.active_libero_swap_json = json.dumps(data.active_libero_swap) \
         if data.active_libero_swap else None
     db.commit()
@@ -400,6 +402,7 @@ def get_tracker_state(match_id: int, db: Session = Depends(get_db)):
         "we_are_serving": state.we_are_serving,
         "rotation_number": state.rotation_number,
         "passing_enabled": state.passing_enabled,
+        "errors_enabled": state.errors_enabled,
         "active_libero_swap": json.loads(state.active_libero_swap_json)
             if state.active_libero_swap_json else None,
         "updated_at": state.updated_at,

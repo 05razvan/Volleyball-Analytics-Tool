@@ -91,6 +91,7 @@ class MatchTrackerStateUpdate(BaseModel):
     we_are_serving: bool
     rotation_number: int
     passing_enabled: bool = False
+    errors_enabled: bool = False
     active_libero_swap: Optional[dict] = None
 
 class MatchSubstitutionCreate(BaseModel):

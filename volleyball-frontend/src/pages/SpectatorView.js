@@ -14,6 +14,8 @@ const EVENT_LABELS = {
   serve_error:    { label: 'Serve Error',  emoji: '❌', color: '#e74c3c', point: 'them' },
   our_point:      { label: 'Opponent Error',        emoji: '✅', color: '#2ecc71', point: 'us'   },
   opponent_point: { label: 'GUVC Error',   emoji: '🔴', color: '#e74c3c', point: 'them' },
+  foot_fault:     { label: 'Foot Fault',   emoji: '👟', color: '#c0392b', point: 'them' },
+  net_touch:      { label: 'Net Touch',    emoji: '🕸️', color: '#c0392b', point: 'them' },
 };
 
 const PASS_LABELS = [
