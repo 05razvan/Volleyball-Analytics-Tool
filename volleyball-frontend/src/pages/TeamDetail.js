@@ -311,6 +311,7 @@ const styles = {
     background: '#F5C800', color: '#111', padding: '2px 7px',
     borderRadius: '10px', fontSize: '9px', fontWeight: '800',
     textTransform: 'uppercase', letterSpacing: '0.03em',
+    display: 'inline-block', marginLeft: '8px', verticalAlign: 'middle',
   },
   position: { color: '#666', fontSize: '12px' },
   placeholder: {
