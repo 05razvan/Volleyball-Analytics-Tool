@@ -63,6 +63,7 @@ app = FastAPI()
 allowed_origins = [origin.strip() for origin in os.environ.get(
     "CORS_ORIGINS",
     "https://volleyball-analytics-tool.vercel.app,"
+    "https://guvc-analytics.vercel.app,"
     "https://volleyball-analytics-tool-odh9.vercel.app,"
     "http://localhost:3000",
 ).split(",") if origin.strip()]
