@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getPlayers, getTeams, getPlayerAnalytics,
-         createPlayer, getPlayerMatchHistory } from '../api';
+         createPlayer, deletePlayer, getPlayerMatchHistory } from '../api';
 import { getRole } from '../auth';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -107,6 +107,25 @@ function Players() {
       load();
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong.');
+    }
+  };
+
+  const handleDelete = async (event, player) => {
+    event.stopPropagation();
+    if (!window.confirm(
+      `Permanently delete ${player.name}?\n\nTheir profile and personal statistics will be removed. Match and team totals will be preserved.`
+    )) return;
+    setError('');
+    try {
+      await deletePlayer(player.id);
+      setPlayers(current => current.filter(item => item.id !== player.id));
+      if (selectedPlayer?.id === player.id) {
+        setSelectedPlayer(null);
+        setPlayerStats(null);
+        setPlayerHistory([]);
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not delete the player.');
     }
   };
 
@@ -335,6 +354,12 @@ function Players() {
                     {selectedPlayer?.id === player.id ? '▲ Hide' : '▼ Stats'}
                   </span>
                 </div>
+                {isAdmin && (
+                  <button style={styles.deleteBtn}
+                    onClick={event => handleDelete(event, player)}>
+                    Delete permanently
+                  </button>
+                )}
               </div>
               {selectedPlayer?.id === player.id && (
                 <div style={{ marginBottom: '8px' }}>
@@ -369,6 +394,12 @@ function Players() {
                   {player.position ? `${player.position} · ` : ''}
                   {teamName(player.team_id)}
                 </div>
+                {isAdmin && (
+                  <button style={styles.deleteBtn}
+                    onClick={event => handleDelete(event, player)}>
+                    Delete permanently
+                  </button>
+                )}
               </div>
             ))}
             {orderedPlayers.length === 0 && <p style={styles.empty}>No players yet.</p>}
@@ -436,6 +467,11 @@ const styles = {
     display: 'inline-block', marginLeft: '4px', verticalAlign: 'middle',
   },
   playerMeta: { color: '#666', fontSize: '12px' },
+  deleteBtn: {
+    marginTop: '8px', padding: '4px 8px', background: 'transparent',
+    color: '#e86a63', border: '1px solid #633', borderRadius: '6px',
+    cursor: 'pointer', fontSize: '10px', fontWeight: '700',
+  },
   statsPanel: {
     flex: 1, background: '#1a1a1a', border: '1px solid #2a2a2a',
     borderRadius: '10px', padding: '16px', minWidth: 0,
