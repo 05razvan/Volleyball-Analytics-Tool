@@ -100,6 +100,9 @@ class MatchSubstitutionCreate(BaseModel):
     set_number: int
     rotation_number: int
 
+class SpectatorHeartbeat(BaseModel):
+    session_id: str = Field(min_length=8, max_length=128)
+
 class AvailabilityCreate(BaseModel):
     player_id: int
     match_id: int

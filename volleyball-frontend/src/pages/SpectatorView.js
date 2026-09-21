@@ -33,6 +33,7 @@ function SpectatorView() {
   const [lineup, setLineup] = useState(null);
   const [tracker, setTracker] = useState(null);
   const [substitutions, setSubstitutions] = useState([]);
+  const [spectatorCount, setSpectatorCount] = useState(null);
   const [error, setError] = useState(false);
 
   const fetchAll = async () => {
@@ -60,16 +61,49 @@ function SpectatorView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
+  useEffect(() => {
+    const storageKey = `guvc-spectator-${matchId}`;
+    let sessionId = window.sessionStorage.getItem(storageKey);
+    if (!sessionId) {
+      sessionId = window.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      window.sessionStorage.setItem(storageKey, sessionId);
+    }
+
+    let active = true;
+    const sendHeartbeat = async () => {
+      try {
+        const response = await fetch(`${api_base}/matches/${matchId}/spectators/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active) setSpectatorCount(data.spectators);
+      } catch {
+        // A temporary network failure should not interrupt the scoreboard.
+      }
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [matchId]);
+
   if (error) return (
     <div style={styles.page}>
-      <Header />
+      <Header spectatorCount={spectatorCount} />
       <div style={styles.errorBox}>Match not found.</div>
     </div>
   );
 
   if (!score) return (
     <div style={styles.page}>
-      <Header />
+      <Header spectatorCount={spectatorCount} />
       <div style={styles.loading}>Loading match...</div>
     </div>
   );
@@ -82,7 +116,7 @@ function SpectatorView() {
 
   return (
     <div style={styles.page}>
-      <Header />
+      <Header spectatorCount={spectatorCount} />
 
       {/* Score */}
       <div style={styles.card}>
@@ -288,10 +322,15 @@ function SpectatorView() {
   );
 }
 
-function Header() {
+function Header({ spectatorCount }) {
   return (
     <div style={styles.header}>
       <span style={styles.headerLeft}>👁👁 Spectating</span>
+      {spectatorCount !== null && (
+        <span style={styles.viewerCount}>
+          👥 {spectatorCount} watching
+        </span>
+      )}
     </div>
   );
 }
@@ -308,7 +347,10 @@ const styles = {
     padding: '14px 0',
   },
   headerLeft: { fontSize: '14px', fontWeight: '700', color: '#F5C800' },
-  headerRight: { fontSize: '13px', color: '#555' },
+  viewerCount: {
+    fontSize: '12px', color: '#bbb', background: '#1a1a1a',
+    border: '1px solid #2a2a2a', borderRadius: '999px', padding: '6px 10px',
+  },
 
   card: {
     background: '#1a1a1a', border: '1px solid #2a2a2a',

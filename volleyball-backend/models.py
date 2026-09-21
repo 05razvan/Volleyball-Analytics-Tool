@@ -143,3 +143,13 @@ class MatchSubstitution(Base):
     player_in_id = Column(Integer, ForeignKey("players.id"), nullable=False)
     rotation_number = Column(Integer, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class SpectatorSession(Base):
+    __tablename__ = "spectator_sessions"
+    __table_args__ = (
+        UniqueConstraint("match_id", "session_id", name="uq_match_spectator_session"),
+    )
+    id = Column(Integer, primary_key=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+    session_id = Column(String(128), nullable=False)
+    last_seen = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)

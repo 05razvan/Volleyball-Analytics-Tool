@@ -13,6 +13,7 @@ from models import (
     MatchTrackerState,
     Player,
     SetScore,
+    SpectatorSession,
     Team,
 )
 from schemas import (
@@ -23,10 +24,11 @@ from schemas import (
     MatchResponse,
     MatchSubstitutionCreate,
     MatchTrackerStateUpdate,
+    SpectatorHeartbeat,
 )
 from auth import get_current_user, require_coach_or_above, get_optional_user
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 router = APIRouter(prefix="/matches", tags=["matches"])
@@ -124,6 +126,8 @@ def delete_match(match_id: int, db: Session = Depends(get_db),
                 synchronize_session=False)
     db.query(MatchSubstitution).filter(
         MatchSubstitution.match_id == match_id).delete(synchronize_session=False)
+    db.query(SpectatorSession).filter(
+        SpectatorSession.match_id == match_id).delete(synchronize_session=False)
     db.query(MatchTrackerState).filter(
         MatchTrackerState.match_id == match_id).delete(synchronize_session=False)
     db.query(MatchLineup).filter(
@@ -487,6 +491,37 @@ def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
             "timestamp": event.timestamp,
         } for event in events],
     }
+
+@router.post("/{match_id}/spectators/heartbeat")
+def spectator_heartbeat(match_id: int, data: SpectatorHeartbeat,
+                        db: Session = Depends(get_db)):
+    """Register an anonymous active viewer and return the live viewer count."""
+    if not db.query(Match.id).filter(Match.id == match_id).first():
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    now = datetime.utcnow()
+    cutoff = now - timedelta(seconds=30)
+    db.query(SpectatorSession).filter(
+        SpectatorSession.last_seen < cutoff).delete(synchronize_session=False)
+
+    session = db.query(SpectatorSession).filter_by(
+        match_id=match_id, session_id=data.session_id).first()
+    if session:
+        session.last_seen = now
+    else:
+        db.add(SpectatorSession(
+            match_id=match_id,
+            session_id=data.session_id,
+            last_seen=now,
+        ))
+    db.flush()
+
+    count = db.query(SpectatorSession).filter(
+        SpectatorSession.match_id == match_id,
+        SpectatorSession.last_seen >= cutoff,
+    ).count()
+    db.commit()
+    return {"spectators": count}
 
 @router.get("/{match_id}/lineup")
 def get_lineup(match_id: int, db: Session = Depends(get_db)):

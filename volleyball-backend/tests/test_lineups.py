@@ -10,7 +10,8 @@ from fastapi import HTTPException
 from database import SessionLocal, engine
 from models import (
     Availability, Base, Match, MatchEvent, MatchEventContext, MatchLineup,
-    MatchSubstitution, MatchTrackerState, Player, SetScore, Team, User,
+    MatchSubstitution, MatchTrackerState, Player, SetScore, SpectatorSession,
+    Team, User,
 )
 from routers.matches import (
     calculate_score,
@@ -20,6 +21,7 @@ from routers.matches import (
     log_event,
     save_tracker_state,
     set_lineup,
+    spectator_heartbeat,
     undo_last_event,
 )
 from routers.analytics import home_away_analytics, rotation_analytics
@@ -27,7 +29,10 @@ from routers.players import (
     PlayerProfileUpdate, delete_player, promote_captain, update_player_profile,
 )
 from routers.teams import delete_team
-from schemas import MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
+from schemas import (
+    MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate,
+    SpectatorHeartbeat,
+)
 
 
 @pytest.fixture()
@@ -108,6 +113,7 @@ def test_admin_can_delete_match_and_all_tracking_data(lineup_data):
         Availability(
             match_id=match.id, player_id=players[0].id, status="available"),
         SetScore(match_id=match.id, set_number=1, our_score=25, opponent_score=20),
+        SpectatorSession(match_id=match.id, session_id="delete-test-viewer"),
     ])
     db.commit()
 
@@ -122,7 +128,24 @@ def test_admin_can_delete_match_and_all_tracking_data(lineup_data):
     assert db.query(MatchSubstitution).count() == 0
     assert db.query(Availability).count() == 0
     assert db.query(SetScore).count() == 0
+    assert db.query(SpectatorSession).count() == 0
     assert db.query(Player).count() == 8
+
+
+def test_spectator_heartbeat_counts_unique_browser_sessions(lineup_data):
+    db, _, match, _, _ = lineup_data
+
+    first = spectator_heartbeat(
+        match.id, SpectatorHeartbeat(session_id="browser-session-one"), db)
+    repeat = spectator_heartbeat(
+        match.id, SpectatorHeartbeat(session_id="browser-session-one"), db)
+    second = spectator_heartbeat(
+        match.id, SpectatorHeartbeat(session_id="browser-session-two"), db)
+
+    assert first == {"spectators": 1}
+    assert repeat == {"spectators": 1}
+    assert second == {"spectators": 2}
+    assert db.query(SpectatorSession).count() == 2
 
 
 def test_admin_can_delete_team_roster_and_matches(lineup_data):

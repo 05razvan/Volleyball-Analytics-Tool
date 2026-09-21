@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import (
     Availability, Match, MatchEvent, MatchEventContext, MatchLineup,
-    MatchSubstitution, MatchTrackerState, Player, SetScore, Team,
+    MatchSubstitution, MatchTrackerState, Player, SetScore, SpectatorSession, Team,
     TeamJoinRequest, User,
 )
 from schemas import TeamCreate, TeamResponse
@@ -54,7 +54,7 @@ def delete_team(team_id: int, db: Session = Depends(get_db),
                     synchronize_session=False)
         for model in (
             MatchSubstitution, MatchTrackerState, MatchLineup,
-            Availability, SetScore, MatchEvent,
+            Availability, SetScore, SpectatorSession, MatchEvent,
         ):
             db.query(model).filter(model.match_id.in_(match_ids)).delete(
                 synchronize_session=False)
