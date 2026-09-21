@@ -359,6 +359,23 @@ def test_admin_can_edit_player_name_and_clear_details(lineup_data):
     assert updated.position is None
 
 
+def test_admin_can_move_player_to_another_team(lineup_data):
+    db, admin, _, players, outsider = lineup_data
+    player = players[0]
+    player.is_captain = True
+    db.commit()
+
+    updated = update_player_profile(
+        player.id,
+        PlayerProfileUpdate(team_id=outsider.team_id),
+        db,
+        admin,
+    )
+
+    assert updated.team_id == outsider.team_id
+    assert updated.is_captain is False
+
+
 def test_player_without_account_can_be_named_team_captain(lineup_data):
     db, admin, _, players, _ = lineup_data
     players[0].is_captain = True

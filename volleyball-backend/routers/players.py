@@ -13,6 +13,7 @@ class PlayerProfileUpdate(BaseModel):
     name: Optional[str] = None
     jersey_number: Optional[int] = None
     position: Optional[str] = None
+    team_id: Optional[int] = None
 
 @router.get("/", response_model=List[PlayerResponse])
 def get_players(team_id: Optional[int] = None,
@@ -74,6 +75,18 @@ def update_player_profile(
         player.jersey_number = body.jersey_number
     if "position" in body.model_fields_set:
         player.position = body.position
+    if "team_id" in body.model_fields_set:
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403,
+                detail="Only admins can move players between teams")
+        if body.team_id is not None:
+            destination = db.query(Team).filter(Team.id == body.team_id).first()
+            if not destination:
+                raise HTTPException(status_code=404,
+                    detail="Destination team not found")
+        if player.team_id != body.team_id:
+            player.team_id = body.team_id
+            player.is_captain = False
     db.commit()
     db.refresh(player)
     return player

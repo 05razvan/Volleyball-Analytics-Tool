@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPlayers, getTeams, getPlayerAnalytics,
-         createPlayer, deletePlayer, getPlayerMatchHistory } from '../api';
+         createPlayer, deletePlayer, getPlayerMatchHistory,
+         updatePlayerProfile } from '../api';
 import { getRole } from '../auth';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -133,6 +134,46 @@ function Players() {
       setError(err.response?.data?.detail || 'Could not delete the player.');
     }
   };
+
+  const handleTeamChange = async (event, player) => {
+    event.stopPropagation();
+    const nextTeamId = event.target.value ? parseInt(event.target.value) : null;
+    setError('');
+    try {
+      await updatePlayerProfile(player.id, { team_id: nextTeamId });
+      setPlayers(current => current.map(item => item.id === player.id
+        ? { ...item, team_id: nextTeamId, is_captain: false }
+        : item));
+      if (selectedPlayer?.id === player.id) {
+        setSelectedPlayer(current => ({
+          ...current, team_id: nextTeamId, is_captain: false,
+        }));
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not change the player’s team.');
+    }
+  };
+
+  const TeamSelector = ({ player }) => isAdmin && (
+    <select style={styles.teamSelect} value={player.team_id ?? ''}
+      aria-label={`Change ${player.name}'s team`}
+      onClick={event => event.stopPropagation()}
+      onChange={event => handleTeamChange(event, player)}>
+      <option value="">Unassigned</option>
+      {DIVISIONS.map(division => {
+        const divisionTeams = teams.filter(team => team.division === division)
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        if (!divisionTeams.length) return null;
+        return (
+          <optgroup key={division} label={division}>
+            {divisionTeams.map(team => (
+              <option key={team.id} value={team.id}>{team.name}</option>
+            ))}
+          </optgroup>
+        );
+      })}
+    </select>
+  );
 
   const tooltipStyle = {
     contentStyle: {
@@ -359,6 +400,7 @@ function Players() {
                     {selectedPlayer?.id === player.id ? '▲ Hide' : '▼ Stats'}
                   </span>
                 </div>
+                <TeamSelector player={player} />
                 {isAdmin && (
                   <button style={styles.deleteBtn}
                     onClick={event => handleDelete(event, player)}>
@@ -399,6 +441,7 @@ function Players() {
                   {player.position ? `${player.position} · ` : ''}
                   {teamName(player.team_id)}
                 </div>
+                <TeamSelector player={player} />
                 {isAdmin && (
                   <button style={styles.deleteBtn}
                     onClick={event => handleDelete(event, player)}>
@@ -472,6 +515,11 @@ const styles = {
     display: 'inline-block', marginLeft: '4px', verticalAlign: 'middle',
   },
   playerMeta: { color: '#666', fontSize: '12px' },
+  teamSelect: {
+    width: '100%', marginTop: '8px', padding: '5px 7px',
+    background: '#242424', color: '#ccc', border: '1px solid #3a3a3a',
+    borderRadius: '6px', fontSize: '10px', cursor: 'pointer',
+  },
   deleteBtn: {
     marginTop: '8px', padding: '4px 8px', background: 'transparent',
     color: '#e86a63', border: '1px solid #633', borderRadius: '6px',
