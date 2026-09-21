@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["JWT_SECRET"] = "test-secret-not-used-in-production"
@@ -9,6 +10,7 @@ from fastapi import HTTPException
 from database import SessionLocal, engine
 from models import Base, Match, MatchLineup, Player, Team, User
 from routers.matches import (
+    create_match,
     get_spectator_snapshot,
     log_event,
     save_tracker_state,
@@ -17,7 +19,7 @@ from routers.matches import (
 )
 from routers.analytics import home_away_analytics, rotation_analytics
 from routers.players import PlayerProfileUpdate, update_player_profile
-from schemas import MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
+from schemas import MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate
 
 
 @pytest.fixture()
@@ -257,3 +259,60 @@ def test_admin_can_edit_player_name_and_clear_details(lineup_data):
     assert updated.name == "New Name"
     assert updated.jersey_number is None
     assert updated.position is None
+
+
+def test_league_match_rejects_team_from_another_division(lineup_data):
+    db, admin, _, _, _ = lineup_data
+    home = db.query(Team).filter(Team.name == "Glasgow").one()
+    other_division = Team(name="Other Division", division="Men's Div 1")
+    db.add(other_division)
+    db.commit()
+
+    with pytest.raises(HTTPException, match="same division") as exc:
+        create_match(MatchCreate(
+            home_team_id=home.id,
+            away_team_id=other_division.id,
+            our_team_id=home.id,
+            date=datetime(2026, 10, 1, 19, 0),
+            match_type="league",
+        ), db, admin)
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize("match_type", ["cup", "friendly"])
+def test_non_league_match_allows_other_division_of_same_gender(lineup_data, match_type):
+    db, admin, _, _, _ = lineup_data
+    home = db.query(Team).filter(Team.name == "Glasgow").one()
+    other_division = Team(name=f"{match_type} Opponent", division="Men's Div 2")
+    db.add(other_division)
+    db.commit()
+
+    created = create_match(MatchCreate(
+        home_team_id=home.id,
+        away_team_id=other_division.id,
+        our_team_id=home.id,
+        date=datetime(2026, 10, 1, 19, 0),
+        match_type=match_type,
+    ), db, admin)
+
+    assert created.match_type == match_type
+
+
+def test_non_league_match_rejects_other_gender(lineup_data):
+    db, admin, _, _, _ = lineup_data
+    home = db.query(Team).filter(Team.name == "Glasgow").one()
+    womens_team = Team(name="Women's Opponent", division="Women's Div 1")
+    db.add(womens_team)
+    db.commit()
+
+    with pytest.raises(HTTPException, match="cannot play each other") as exc:
+        create_match(MatchCreate(
+            home_team_id=home.id,
+            away_team_id=womens_team.id,
+            our_team_id=home.id,
+            date=datetime(2026, 10, 1, 19, 0),
+            match_type="friendly",
+        ), db, admin)
+
+    assert exc.value.status_code == 400

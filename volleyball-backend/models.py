@@ -12,6 +12,7 @@ DIVISIONS = [
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
 EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace",
                "serve_error", "assist", "opponent_point", "our_point", "pass"]
+MATCH_TYPES = ["league", "cup", "friendly"]
 
 class User(Base):
     __tablename__ = "users"
@@ -65,6 +66,7 @@ class Match(Base):
     away_team_id = Column(Integer, ForeignKey("teams.id"))
     date = Column(DateTime)
     location = Column(String)
+    match_type = Column(String, nullable=False, default="league", server_default="league")
     status = Column(String, default="scheduled")
     our_team_id = Column(Integer, ForeignKey("teams.id"))
     current_set = Column(Integer, default=1)

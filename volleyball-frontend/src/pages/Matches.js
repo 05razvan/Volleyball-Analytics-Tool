@@ -13,7 +13,7 @@ function Matches() {
   const [matches, setMatches] = useState([]);
   const [teams, setTeams] = useState([]);
   const [form, setForm] = useState({
-    home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: ''
+    match_type: '', home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: ''
   });
   const [error, setError] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
@@ -38,14 +38,18 @@ function Matches() {
     getTeams().then(res => setTeams(res.data));
   }, []);
 
-  const availableAwayTeams = teams.filter(t =>
-    !form.home_team_id ||
-    t.division === teams.find(x => x.id === parseInt(form.home_team_id))?.division
-  );
+  const selectedHomeTeam = teams.find(x => x.id === parseInt(form.home_team_id));
+  const teamGender = (team) => team?.division.startsWith("Men's") ? 'men'
+    : team?.division.startsWith("Women's") ? 'women' : null;
+  const availableAwayTeams = teams.filter(t => {
+    if (!selectedHomeTeam) return true;
+    if (t.id === selectedHomeTeam.id || teamGender(t) !== teamGender(selectedHomeTeam)) return false;
+    return form.match_type !== 'league' || t.division === selectedHomeTeam.division;
+  });
 
   const handleSubmit = async () => {
     setError('');
-    if (!form.home_team_id || !form.away_team_id || !form.our_team_id || !form.date) {
+    if (!form.match_type || !form.home_team_id || !form.away_team_id || !form.our_team_id || !form.date) {
       setError('All fields except location are required.');
       return;
     }
@@ -61,7 +65,7 @@ function Matches() {
         our_team_id: parseInt(form.our_team_id),
       });
       setMatches([...matches, res.data]);
-      setForm({ home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: '' });
+      setForm({ match_type: '', home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: '' });
       setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong.');
@@ -171,6 +175,7 @@ function Matches() {
             )}
 
             <div style={styles.meta}>
+              <span style={styles.typeLabel}>{match.match_type || 'league'}</span>
               {new Date(match.date).toLocaleDateString('en-GB', {
                 weekday: 'short', day: 'numeric', month: 'short',
                 hour: '2-digit', minute: '2-digit'
@@ -239,20 +244,37 @@ function Matches() {
       {canCreateMatch && showForm && (
         <div style={styles.card}>
           <div style={styles.formCol}>
+            <select style={styles.input} value={form.match_type}
+              onChange={e => setForm({
+                ...form, match_type: e.target.value,
+                home_team_id: '', away_team_id: '', our_team_id: '',
+              })}>
+              <option value="">Match type</option>
+              <option value="league">League</option>
+              <option value="cup">Cup</option>
+              <option value="friendly">Friendly</option>
+            </select>
             <select style={styles.input} value={form.home_team_id}
-              onChange={e => setForm({ ...form, home_team_id: e.target.value, away_team_id: '' })}>
+              disabled={!form.match_type}
+              onChange={e => setForm({
+                ...form, home_team_id: e.target.value, away_team_id: '', our_team_id: '',
+              })}>
               <option value="">Home team</option>
               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <select style={styles.input} value={form.away_team_id}
-              onChange={e => setForm({ ...form, away_team_id: e.target.value })}>
+              disabled={!form.home_team_id}
+              onChange={e => setForm({ ...form, away_team_id: e.target.value, our_team_id: '' })}>
               <option value="">Away team</option>
               {availableAwayTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <select style={styles.input} value={form.our_team_id}
               onChange={e => setForm({ ...form, our_team_id: e.target.value })}>
               <option value="">Which team is ours?</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {[form.home_team_id, form.away_team_id].filter(Boolean).map(id => {
+                const team = teams.find(t => t.id === parseInt(id));
+                return team && <option key={team.id} value={team.id}>{team.name}</option>;
+              })}
             </select>
             <input style={styles.input} type="datetime-local" value={form.date}
               onChange={e => setForm({ ...form, date: e.target.value })} />
@@ -364,6 +386,11 @@ const styles = {
   vs: { color: '#555', fontSize: '12px' },
   matchRight: { display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' },
   meta: { color: '#888', fontSize: '11px' },
+  typeLabel: {
+    display: 'inline-block', marginRight: '6px', padding: '1px 5px',
+    borderRadius: '4px', background: '#302b12', color: '#F5C800',
+    fontSize: '9px', fontWeight: '700', textTransform: 'uppercase',
+  },
   liveBadge: { color: '#ff6b6b', fontWeight: '700', fontSize: '12px' },
   doneBadge: { color: '#888', fontSize: '12px', cursor: 'pointer' },
   startBtn: {

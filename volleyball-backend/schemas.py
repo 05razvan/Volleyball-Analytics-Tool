@@ -37,6 +37,7 @@ class MatchCreate(BaseModel):
     our_team_id: int
     date: datetime
     location: Optional[str] = None
+    match_type: str
 
 class MatchResponse(BaseModel):
     id: int
@@ -45,6 +46,7 @@ class MatchResponse(BaseModel):
     our_team_id: int
     date: datetime
     location: Optional[str]
+    match_type: str
     status: str
     current_set: int
     class Config:

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from database import engine, SessionLocal
 from models import Base, User
 from auth import hash_password
@@ -7,6 +8,18 @@ from routers import teams, players, matches, availability, analytics, auth, join
 import os
 
 Base.metadata.create_all(bind=engine)
+
+def ensure_match_type_column():
+    """Add the match type to databases created before this field existed."""
+    columns = {column["name"] for column in inspect(engine).get_columns("matches")}
+    if "match_type" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE matches ADD COLUMN match_type VARCHAR "
+                "NOT NULL DEFAULT 'league'"
+            ))
+
+ensure_match_type_column()
 
 def seed_admin():
     admin_password = os.environ.get("ADMIN_PASSWORD")

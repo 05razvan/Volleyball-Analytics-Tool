@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import (
     EVENT_TYPES,
+    MATCH_TYPES,
     Match,
     MatchEvent,
     MatchEventContext,
@@ -31,6 +32,13 @@ router = APIRouter(prefix="/matches", tags=["matches"])
 
 POINTS_FOR_US = {"kill", "ace", "our_point", "kill_block"}
 POINTS_FOR_THEM = {"serve_error", "opponent_point"}
+
+def team_gender(team: Team):
+    if team.division.startswith("Men's"):
+        return "men"
+    if team.division.startswith("Women's"):
+        return "women"
+    return None
 
 def calculate_score(match_id: int, set_number: int, db: Session):
     events = db.query(MatchEvent).filter(
@@ -68,9 +76,21 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db),
     away = db.query(Team).filter(Team.id == match.away_team_id).first()
     if not home or not away:
         raise HTTPException(status_code=404, detail="Team not found")
-    if home.division != away.division:
+    if home.id == away.id:
         raise HTTPException(status_code=400,
-            detail="Teams must be in the same division")
+            detail="Home and away teams must be different")
+    if match.our_team_id not in {home.id, away.id}:
+        raise HTTPException(status_code=400,
+            detail="The tracking team must be playing in the match")
+    if match.match_type not in MATCH_TYPES:
+        raise HTTPException(status_code=400,
+            detail="Match type must be league, cup, or friendly")
+    if not team_gender(home) or team_gender(home) != team_gender(away):
+        raise HTTPException(status_code=400,
+            detail="Men's and women's teams cannot play each other")
+    if match.match_type == "league" and home.division != away.division:
+        raise HTTPException(status_code=400,
+            detail="League opponents must be in the same division")
     new_match = Match(**match.model_dump())
     db.add(new_match)
     db.commit()
