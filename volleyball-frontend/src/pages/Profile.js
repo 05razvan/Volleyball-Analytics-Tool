@@ -13,11 +13,12 @@ function Profile() {
       try {
         const meRes = await getMe();
         setMe(meRes.data);
-        if (meRes.data.role !== 'coach' && meRes.data.role !== 'admin') {
+        if (meRes.data.role !== 'coach' && meRes.data.role !== 'admin'
+            && meRes.data.player_id) {
           try {
-            const statsRes = await getPlayerAnalytics(meRes.data.user_id);
+            const statsRes = await getPlayerAnalytics(meRes.data.player_id);
             setStats(statsRes.data);
-            const histRes = await getPlayerMatchHistory(meRes.data.user_id);
+            const histRes = await getPlayerMatchHistory(meRes.data.player_id);
             setHistory(histRes.data);
           } catch { }
         }
@@ -88,7 +89,8 @@ function Profile() {
             {[
               { label: 'Kills', value: stats.kills, color: '#2ecc71' },
               { label: 'Aces', value: stats.aces, color: '#3498db' },
-              { label: 'Blocks', value: stats.blocks, color: '#9b59b6' },
+              { label: 'Block points', value: stats.block_points, color: '#9b59b6' },
+              { label: 'Block touches', value: stats.block_touches, color: '#e67e22' },
               { label: 'Digs', value: stats.digs, color: '#1abc9c' },
               { label: 'Assists', value: stats.assists, color: '#e67e22' },
             ].map(s => (
@@ -100,12 +102,44 @@ function Profile() {
           </div>
           <div style={styles.pillRow}>
             {[
-              { label: 'Kill %', value: `${stats.kill_pct}%` },
-              { label: 'Serve %', value: `${stats.serve_pct}%` },
-              { label: 'Attack eff.', value: `${stats.attack_efficiency}%` },
+              { label: 'Attack errors', value: stats.attack_errors },
+              { label: 'Setter dumps', value: stats.setter_dumps },
+              { label: 'Block touches', value: stats.block_touches },
+              { label: 'Serve errors', value: stats.serve_errors },
+              { label: 'Player faults', value: stats.foot_faults + stats.net_touches },
+            ].map(s => (
+              <div key={s.label} style={styles.pill}>
+                <div style={{ ...styles.pillValue, color: '#e67e22' }}>{s.value}</div>
+                <div style={styles.pillLabel}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={styles.pillRow}>
+            {[
+              { label: 'Kill %', value: stats.kill_pct == null ? '—' : `${stats.kill_pct}%` },
+              { label: 'Attack eff.', value: stats.attack_efficiency == null ? '—' : `${stats.attack_efficiency}%` },
+              { label: 'Serve in %', value: stats.serve_in_pct == null ? '—' : `${stats.serve_in_pct}%` },
+              { label: 'Ace %', value: stats.ace_pct == null ? '—' : `${stats.ace_pct}%` },
+              { label: 'Serve attempts', value: stats.serve_attempts },
+              { label: 'Attack attempts', value: stats.total_attacks },
             ].map(s => (
               <div key={s.label} style={styles.pill}>
                 <div style={{ ...styles.pillValue, color: '#F5C800' }}>{s.value}</div>
+                <div style={styles.pillLabel}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={styles.pillRow}>
+            {[
+              { label: 'Pass average', value: stats.pass_average == null ? 'Not tracked' : `${stats.pass_average}/3` },
+              { label: 'Positive pass', value: stats.positive_pass_pct == null ? '—' : `${stats.positive_pass_pct}%` },
+              { label: 'Perfect pass', value: stats.perfect_pass_pct == null ? '—' : `${stats.perfect_pass_pct}%` },
+              { label: 'Reception errors', value: stats.reception_error_pct == null ? '—' : `${stats.reception_error_pct}%` },
+              { label: 'Rated receptions', value: stats.reception_attempts },
+              { label: 'Sets played', value: stats.sets_played || '—' },
+            ].map(s => (
+              <div key={s.label} style={styles.pill}>
+                <div style={{ ...styles.pillValue, color: '#1abc9c' }}>{s.value}</div>
                 <div style={styles.pillLabel}>{s.label}</div>
               </div>
             ))}
@@ -120,7 +154,7 @@ function Profile() {
                   <span>Result</span>
                   <span>Kills</span>
                   <span>Aces</span>
-                  <span>Blocks</span>
+                  <span>Block pts</span>
                   <span>Digs</span>
                   <span>Kill %</span>
                   <span>Atk eff.</span>
@@ -131,7 +165,7 @@ function Profile() {
                     <span style={{ fontWeight: '600' }}>{h.result}</span>
                     <span>{h.kills}</span>
                     <span>{h.aces}</span>
-                    <span>{h.blocks}</span>
+                    <span>{h.kill_blocks ?? 0}</span>
                     <span>{h.digs}</span>
                     <span style={{ color: '#F5C800' }}>{h.kill_pct}%</span>
                     <span style={{ color: '#F5C800' }}>{h.attack_efficiency}%</span>

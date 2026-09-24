@@ -36,6 +36,15 @@ def ensure_schema_columns():
                 "NOT NULL DEFAULT false"
             ))
 
+    context_columns = {column["name"] for column in inspect(engine).get_columns(
+        "match_event_contexts")}
+    if "assist_player_id" not in context_columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE match_event_contexts "
+                "ADD COLUMN assist_player_id INTEGER REFERENCES players(id)"
+            ))
+
 ensure_schema_columns()
 
 def seed_admin():

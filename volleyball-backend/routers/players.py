@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
-from models import Availability, MatchEvent, MatchLineup, MatchSubstitution, Player, User, Team
+from models import (
+    Availability, MatchEvent, MatchEventContext, MatchLineup, MatchSubstitution, Player,
+    SetParticipation, User, Team,
+)
 from schemas import PlayerCreate, PlayerResponse
 from auth import get_current_user, require_admin
 from pydantic import BaseModel
@@ -100,12 +103,17 @@ def delete_player(player_id: int,
         raise HTTPException(status_code=404, detail="Player not found")
     db.query(MatchEvent).filter(MatchEvent.player_id == player_id).update(
         {MatchEvent.player_id: None}, synchronize_session=False)
+    db.query(MatchEventContext).filter(
+        MatchEventContext.assist_player_id == player_id).update(
+            {MatchEventContext.assist_player_id: None}, synchronize_session=False)
     db.query(MatchSubstitution).filter(
         (MatchSubstitution.player_out_id == player_id) |
         (MatchSubstitution.player_in_id == player_id)
     ).delete(synchronize_session=False)
     db.query(MatchLineup).filter(
         MatchLineup.player_id == player_id).delete(synchronize_session=False)
+    db.query(SetParticipation).filter(
+        SetParticipation.player_id == player_id).delete(synchronize_session=False)
     db.query(Availability).filter(
         Availability.player_id == player_id).delete(synchronize_session=False)
     db.delete(player)

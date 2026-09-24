@@ -210,7 +210,7 @@ function Players() {
             {[
               { label: 'Kills', value: playerStats.kills, color: '#2ecc71' },
               { label: 'Aces', value: playerStats.aces, color: '#3498db' },
-              { label: 'Blocks', value: playerStats.blocks, color: '#9b59b6' },
+              { label: 'Block points', value: playerStats.block_points, color: '#9b59b6' },
               { label: 'Digs', value: playerStats.digs, color: '#1abc9c' },
               { label: 'Assists', value: playerStats.assists, color: '#e67e22' },
             ].map(s => (
@@ -223,9 +223,9 @@ function Players() {
 
           <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '16px' }}>
             {[
-            { label: 'Kill %', value: `${playerStats.kill_pct}%` },
-            { label: 'Serve %', value: `${playerStats.serve_pct}%` },
-            { label: 'Serve err %', value: `${playerStats.serve_error_rate ?? 0}%` },
+            { label: 'Attack eff.', value: playerStats.attack_efficiency == null ? '—' : `${playerStats.attack_efficiency}%` },
+            { label: 'Kill %', value: playerStats.kill_pct == null ? '—' : `${playerStats.kill_pct}%` },
+            { label: 'Serve in %', value: playerStats.serve_in_pct == null ? '—' : `${playerStats.serve_in_pct}%` },
           ].map(s => (
             <div key={s.label} style={styles.statBox}>
               <div style={{ ...styles.statVal, color: '#F5C800' }}>{s.value}</div>
@@ -233,6 +233,34 @@ function Players() {
             </div>
           ))}
         </div>
+          <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '16px' }}>
+            {[
+              { label: 'Pass avg.', value: playerStats.pass_average == null ? '—' : `${playerStats.pass_average}/3` },
+              { label: 'Positive pass', value: playerStats.positive_pass_pct == null ? '—' : `${playerStats.positive_pass_pct}%` },
+              { label: 'Perfect pass', value: playerStats.perfect_pass_pct == null ? '—' : `${playerStats.perfect_pass_pct}%` },
+              { label: 'Receptions', value: playerStats.reception_attempts },
+              { label: 'Sets played', value: playerStats.sets_played || '—' },
+            ].map(s => (
+              <div key={s.label} style={styles.statBox}>
+                <div style={{ ...styles.statVal, color: '#1abc9c' }}>{s.value}</div>
+                <div style={styles.statLabel}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: '16px' }}>
+            {[
+              { label: 'Attack errors', value: playerStats.attack_errors },
+              { label: 'Setter dumps', value: playerStats.setter_dumps },
+              { label: 'Block touches', value: playerStats.block_touches },
+              { label: 'Serve errors', value: playerStats.serve_errors },
+              { label: 'Player faults', value: playerStats.foot_faults + playerStats.net_touches },
+            ].map(s => (
+              <div key={s.label} style={styles.statBox}>
+                <div style={{ ...styles.statVal, color: '#e67e22' }}>{s.value}</div>
+                <div style={styles.statLabel}>{s.label}</div>
+              </div>
+            ))}
+          </div>
 
           {playerHistory.length > 1 && (
             <>
@@ -262,14 +290,14 @@ function Players() {
                   </ResponsiveContainer>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={styles.chartTitle}>Blocks & Digs</div>
+                  <div style={styles.chartTitle}>Block Points & Digs</div>
                   <ResponsiveContainer width="100%" height={smallChartHeight}>
                     <BarChart data={[...playerHistory].reverse()}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                       <XAxis dataKey="date" tick={{ fontSize: 8, fill: '#888' }} />
                       <YAxis tick={{ fontSize: 8, fill: '#888' }} width={20} />
                       <Tooltip {...tooltipStyle} cursor={{ fill: '#2a2a2a' }} />
-                      <Bar dataKey="blocks" fill="#9b59b6" radius={[3,3,0,0]} name="Blocks" />
+                      <Bar dataKey="kill_blocks" fill="#9b59b6" radius={[3,3,0,0]} name="Block Points" />
                       <Bar dataKey="digs" fill="#1abc9c" radius={[3,3,0,0]} name="Digs" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -297,7 +325,7 @@ function Players() {
                     <span style={{ fontWeight: '600' }}>{h.result}</span>
                     <span>{h.kills}</span>
                     <span>{h.aces}</span>
-                    <span>{h.blocks}</span>
+                    <span>{h.kill_blocks ?? 0}</span>
                     <span>{h.digs}</span>
                     <span style={{ color: '#F5C800' }}>{h.kill_pct}%</span>
                   </div>

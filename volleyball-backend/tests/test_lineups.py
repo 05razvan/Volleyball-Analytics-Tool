@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from database import SessionLocal, engine
 from models import (
     Availability, Base, Match, MatchEvent, MatchEventContext, MatchLineup,
-    MatchSubstitution, MatchTrackerState, Player, SetScore, SpectatorSession,
-    Team, User,
+    MatchSubstitution, MatchTrackerState, Player, SetParticipation, SetScore,
+    SpectatorSession, Team, User,
 )
 from routers.matches import (
     calculate_score,
@@ -91,6 +91,8 @@ def test_saves_six_player_lineup_and_bench(lineup_data):
     assert response == {"message": "Lineup saved"}
     assert sum(entry.is_on_court for entry in saved) == 6
     assert sum(not entry.is_on_court for entry in saved) == 1
+    assert db.query(SetParticipation).filter_by(
+        match_id=match.id, set_number=1).count() == 6
 
 
 def test_admin_can_delete_match_and_all_tracking_data(lineup_data):
@@ -317,6 +319,61 @@ def test_spike_error_and_setter_dump_update_score_and_attack_stats(lineup_data):
     assert stats["kills"] == 1
     assert stats["errors"] == 1
     assert stats["attack_efficiency"] == 0
+
+
+def test_assist_is_linked_to_kill_and_removed_with_undo(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    kill = log_event(match.id, MatchEventCreate(
+        match_id=match.id,
+        player_id=players[0].id,
+        assist_player_id=players[1].id,
+        event_type="kill",
+        set_number=1,
+        rotation_number=1,
+        we_are_serving=False,
+    ), db, admin)
+
+    context = db.query(MatchEventContext).filter_by(event_id=kill.id).one()
+    assert context.assist_player_id == players[1].id
+    assert get_player_stats(players[1].id, db)["assists"] == 1
+
+    undo_last_event(match.id, db, admin)
+
+    assert get_player_stats(players[1].id, db)["assists"] == 0
+
+
+def test_reception_and_serve_metrics_use_all_attempts(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    player = players[0]
+    for rating in range(4):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=player.id,
+            event_type="pass",
+            set_number=1,
+            rotation_number=1,
+            pass_rating=rating,
+        ), db, admin)
+    for event_type in ("ace", "serve", "serve_error"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=player.id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=True,
+        ), db, admin)
+
+    stats = get_player_stats(player.id, db)
+
+    assert stats["pass_average"] == 1.5
+    assert stats["positive_pass_pct"] == 50.0
+    assert stats["perfect_pass_pct"] == 25.0
+    assert stats["reception_error_pct"] == 25.0
+    assert stats["serve_attempts"] == 3
+    assert stats["serve_in_pct"] == 66.7
+    assert stats["ace_pct"] == 33.3
+    assert stats["serve_efficiency"] == 0.0
 
 
 def test_score_corrections_do_not_create_player_stats(lineup_data):

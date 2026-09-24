@@ -62,6 +62,7 @@ class MatchEventCreate(BaseModel):
     rotation_number: int = 1
     we_are_serving: bool = False
     pass_rating: Optional[int] = None
+    assist_player_id: Optional[int] = None
     state_before: Optional[dict] = None
 
 class MatchEventResponse(BaseModel):

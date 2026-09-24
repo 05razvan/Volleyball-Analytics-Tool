@@ -23,8 +23,8 @@ const EVENT_LABELS = {
 };
 
 const PASS_LABELS = [
-  { label: 'Pass Error', emoji: '❌', color: '#c0392b' },
-  { label: 'Poor Pass', emoji: '⚠️', color: '#d35400' },
+  { label: 'Unplayable Pass', emoji: '❌', color: '#c0392b' },
+  { label: 'Out-of-System Pass', emoji: '⚠️', color: '#d35400' },
   { label: 'Good Pass', emoji: '👍', color: '#2980b9' },
   { label: 'Perfect Pass', emoji: '⭐', color: '#27ae60' },
 ];
@@ -297,6 +297,9 @@ function SpectatorView() {
                     </span>
                     {playerName && (
                       <span style={styles.feedPlayer}> · {playerName}</span>
+                    )}
+                    {event.assist_player_name && (
+                      <span style={styles.feedPlayer}> · assist {event.assist_player_name}</span>
                     )}
                     {pointDesc && (
                       <span style={{

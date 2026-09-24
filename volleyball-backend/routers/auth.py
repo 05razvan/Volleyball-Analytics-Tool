@@ -78,6 +78,10 @@ def get_me(current_user: User = Depends(get_current_user),
            db: Session = Depends(get_db)):
     team_id = None
     team_name = None
+    player_id = current_user.player.id if current_user.player else None
+    if current_user.player and current_user.player.team:
+        team_id = current_user.player.team.id
+        team_name = current_user.player.team.name
     if current_user.role in ("coach", "admin"):
         team = db.query(Team).filter(
             (Team.head_coach_id == current_user.id) |
@@ -91,6 +95,7 @@ def get_me(current_user: User = Depends(get_current_user),
         "email": current_user.email,
         "name": current_user.name,
         "role": current_user.role,
+        "player_id": player_id,
         "team_id": team_id,
         "team_name": team_name,
     }

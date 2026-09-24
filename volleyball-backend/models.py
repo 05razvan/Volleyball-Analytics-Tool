@@ -111,6 +111,17 @@ class MatchLineup(Base):
     is_on_court = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class SetParticipation(Base):
+    __tablename__ = "set_participations"
+    __table_args__ = (
+        UniqueConstraint("match_id", "set_number", "player_id",
+                         name="uq_set_participation"),
+    )
+    id = Column(Integer, primary_key=True)
+    match_id = Column(Integer, ForeignKey("matches.id"), nullable=False, index=True)
+    set_number = Column(Integer, nullable=False)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=False, index=True)
+
 class MatchTrackerState(Base):
     __tablename__ = "match_tracker_states"
     id = Column(Integer, primary_key=True)
@@ -131,6 +142,7 @@ class MatchEventContext(Base):
     rotation_number = Column(Integer, nullable=False)
     we_were_serving = Column(Boolean, nullable=False)
     pass_rating = Column(Integer, nullable=True)
+    assist_player_id = Column(Integer, ForeignKey("players.id"), nullable=True)
     state_before_json = Column(Text, nullable=True)
 
 class MatchSubstitution(Base):

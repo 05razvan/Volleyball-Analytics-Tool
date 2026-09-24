@@ -192,14 +192,28 @@ function TeamDetail() {
           <div style={styles.statGrid}>
             <StatBox label="Kills" value={playerStats.kills} color="#2ecc71" />
             <StatBox label="Aces" value={playerStats.aces} color="#3498db" />
-            <StatBox label="Blocks" value={playerStats.blocks} color="#9b59b6" />
+            <StatBox label="Block points" value={playerStats.block_points} color="#9b59b6" />
             <StatBox label="Digs" value={playerStats.digs} color="#1abc9c" />
             <StatBox label="Assists" value={playerStats.assists} color="#e67e22" />
           </div>
           <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            <StatBox label="Kill %" value={`${playerStats.kill_pct}%`} color="#F5C800" />
-            <StatBox label="Serve err %" value={`${playerStats.serve_error_rate ?? 0}%`} color="#e74c3c" />
-            <StatBox label="Aces" value={playerStats.aces} color="#3498db" />
+            <StatBox label="Attack eff." value={playerStats.attack_efficiency == null ? '—' : `${playerStats.attack_efficiency}%`} color="#F5C800" />
+            <StatBox label="Kill %" value={playerStats.kill_pct == null ? '—' : `${playerStats.kill_pct}%`} color="#F5C800" />
+            <StatBox label="Serve in %" value={playerStats.serve_in_pct == null ? '—' : `${playerStats.serve_in_pct}%`} color="#3498db" />
+          </div>
+          <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(5, 1fr)', marginTop: '10px' }}>
+            <StatBox label="Pass avg." value={playerStats.pass_average == null ? '—' : `${playerStats.pass_average}/3`} color="#1abc9c" />
+            <StatBox label="Positive pass" value={playerStats.positive_pass_pct == null ? '—' : `${playerStats.positive_pass_pct}%`} color="#2ecc71" />
+            <StatBox label="Perfect pass" value={playerStats.perfect_pass_pct == null ? '—' : `${playerStats.perfect_pass_pct}%`} color="#F5C800" />
+            <StatBox label="Receptions" value={playerStats.reception_attempts} />
+            <StatBox label="Sets played" value={playerStats.sets_played || '—'} />
+          </div>
+          <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(5, 1fr)', marginTop: '10px' }}>
+            <StatBox label="Attack errors" value={playerStats.attack_errors} color="#e74c3c" />
+            <StatBox label="Setter dumps" value={playerStats.setter_dumps} color="#8e44ad" />
+            <StatBox label="Block touches" value={playerStats.block_touches} color="#e67e22" />
+            <StatBox label="Serve errors" value={playerStats.serve_errors} color="#e74c3c" />
+            <StatBox label="Player faults" value={playerStats.foot_faults + playerStats.net_touches} color="#e74c3c" />
           </div>
         </>
       ) : (

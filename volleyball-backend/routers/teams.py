@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import (
     Availability, Match, MatchEvent, MatchEventContext, MatchLineup,
-    MatchSubstitution, MatchTrackerState, Player, SetScore, SpectatorSession, Team,
+    MatchSubstitution, MatchTrackerState, Player, SetParticipation, SetScore,
+    SpectatorSession, Team,
     TeamJoinRequest, User,
 )
 from schemas import TeamCreate, TeamResponse
@@ -54,7 +55,7 @@ def delete_team(team_id: int, db: Session = Depends(get_db),
                     synchronize_session=False)
         for model in (
             MatchSubstitution, MatchTrackerState, MatchLineup,
-            Availability, SetScore, SpectatorSession, MatchEvent,
+            Availability, SetParticipation, SetScore, SpectatorSession, MatchEvent,
         ):
             db.query(model).filter(model.match_id.in_(match_ids)).delete(
                 synchronize_session=False)
@@ -73,10 +74,17 @@ def delete_team(team_id: int, db: Session = Depends(get_db),
             (MatchSubstitution.player_out_id.in_(player_ids)) |
             (MatchSubstitution.player_in_id.in_(player_ids))
         ).delete(synchronize_session=False)
+        db.query(MatchEventContext).filter(
+            MatchEventContext.assist_player_id.in_(player_ids)).update(
+                {MatchEventContext.assist_player_id: None},
+                synchronize_session=False)
         db.query(Availability).filter(
             Availability.player_id.in_(player_ids)).delete(synchronize_session=False)
         db.query(MatchLineup).filter(
             MatchLineup.player_id.in_(player_ids)).delete(synchronize_session=False)
+        db.query(SetParticipation).filter(
+            SetParticipation.player_id.in_(player_ids)).delete(
+                synchronize_session=False)
         db.query(MatchEvent).filter(
             MatchEvent.player_id.in_(player_ids)).delete(synchronize_session=False)
         db.query(Player).filter(Player.id.in_(player_ids)).delete(

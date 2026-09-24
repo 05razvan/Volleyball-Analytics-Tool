@@ -154,14 +154,38 @@ function Analytics() {
         <>
           <h3 style={styles.sectionTitle}>Team overview</h3>
           <div style={styles.statRow}>
-            <StatCard label="Kill %" value={teamStats.team_kill_pct} unit="%" />
-            <StatCard label="Kill block %" value={teamStats.team_kill_block_pct} unit="%" color="#9b59b6" />
-            <StatCard label="Serve %" value={teamStats.team_serve_pct} unit="%" color="#3498db" />
-            <StatCard label="Serve error rate" value={teamStats.team_serve_error_rate} unit="%" color="#e74c3c" />
+            <StatCard label="Attack efficiency" value={teamStats.team_attack_efficiency ?? '—'}
+              unit={teamStats.team_attack_efficiency == null ? '' : '%'} />
+            <StatCard label="Kill %" value={teamStats.team_kill_pct ?? '—'}
+              unit={teamStats.team_kill_pct == null ? '' : '%'} />
+            <StatCard label="Attack attempts" value={teamStats.total_attacks} />
+            <StatCard label="Attack errors" value={teamStats.total_attack_errors} color="#e74c3c" />
+            <StatCard label="Block points" value={teamStats.total_block_points} color="#9b59b6" />
+            <StatCard label="Block touches" value={teamStats.total_block_touches} color="#e67e22" />
+          </div>
+          <div style={styles.statRow}>
+            <StatCard label="Serve in %" value={teamStats.team_serve_in_pct ?? '—'}
+              unit={teamStats.team_serve_in_pct == null ? '' : '%'} color="#3498db" />
+            <StatCard label="Ace %" value={teamStats.team_ace_pct ?? '—'}
+              unit={teamStats.team_ace_pct == null ? '' : '%'} color="#2980b9" />
+            <StatCard label="Serve efficiency" value={teamStats.team_serve_efficiency ?? '—'}
+              unit={teamStats.team_serve_efficiency == null ? '' : '%'} color="#1abc9c" />
+            <StatCard label="Serve errors" value={teamStats.total_serve_errors} color="#e74c3c" />
+            <StatCard label="Serve attempts" value={teamStats.total_serves} />
             <StatCard label="Side-out %" value={rotationStats?.sideout_pct ?? '—'}
               unit={rotationStats?.sideout_pct == null ? '' : '%'} color="#2ecc71" />
+          </div>
+          <div style={styles.statRow}>
             <StatCard label="Pass average" value={teamStats.team_pass_average ?? '—'}
               unit={teamStats.team_pass_average == null ? '' : '/3'} color="#1abc9c" />
+            <StatCard label="Positive pass %" value={teamStats.team_positive_pass_pct ?? '—'}
+              unit={teamStats.team_positive_pass_pct == null ? '' : '%'} color="#2ecc71" />
+            <StatCard label="Perfect pass %" value={teamStats.team_perfect_pass_pct ?? '—'}
+              unit={teamStats.team_perfect_pass_pct == null ? '' : '%'} color="#F5C800" />
+            <StatCard label="Reception error %" value={teamStats.team_reception_error_pct ?? '—'}
+              unit={teamStats.team_reception_error_pct == null ? '' : '%'} color="#e74c3c" />
+            <StatCard label="Rated receptions" value={teamStats.team_pass_count} />
+            <StatCard label="Assists" value={teamStats.total_assists} color="#e67e22" />
           </div>
 
           {homeAwayStats && (homeAwayStats.home.matches > 0 || homeAwayStats.away.matches > 0) && (
@@ -226,7 +250,7 @@ function Analytics() {
               <h3 style={styles.sectionTitle}>Top performers</h3>
               <div style={styles.topRow}>
                 <TopPerformerBadge label="Most kills" name={topPerformers.most_kills?.name} value={topPerformers.most_kills?.value} />
-                <TopPerformerBadge label="Most blocks" name={topPerformers.most_blocks?.name} value={topPerformers.most_blocks?.value} />
+                <TopPerformerBadge label="Most block points" name={topPerformers.most_blocks?.name} value={topPerformers.most_blocks?.value} />
                 <TopPerformerBadge label="Most digs" name={topPerformers.most_digs?.name} value={topPerformers.most_digs?.value} />
                 <TopPerformerBadge label="Most aces" name={topPerformers.most_aces?.name} value={topPerformers.most_aces?.value} />
                 <TopPerformerBadge label="Best kill %" name={topPerformers.highest_kill_pct?.name} value={topPerformers.highest_kill_pct?.value} unit="%" />
@@ -321,7 +345,7 @@ function Analytics() {
                 )}>
                 <div style={styles.playerBtnName}>{p.name}</div>
                 <div style={styles.playerBtnPos}>{p.position ?? 'Rec'}</div>
-                <div style={styles.playerBtnStat}>{p.kill_pct}% kill</div>
+                <div style={styles.playerBtnStat}>{p.kill_pct ?? '—'}{p.kill_pct == null ? '' : '%'} kill</div>
               </button>
             ))}
           </div>
@@ -330,16 +354,53 @@ function Analytics() {
             <>
               <h3 style={styles.sectionTitle}>{playerStats.name}</h3>
               <div style={styles.statRow}>
-                <StatCard label="Kill %" value={playerStats.kill_pct} unit="%" />
-                <StatCard label="Serve %" value={playerStats.serve_pct} unit="%" color="#3498db" />
-                <StatCard label="Serve err %" value={playerStats.serve_error_rate ?? 0} unit="%" color="#e74c3c" />
+                <StatCard label="Attack efficiency" value={playerStats.attack_efficiency ?? '—'}
+                  unit={playerStats.attack_efficiency == null ? '' : '%'} />
+                <StatCard label="Kill %" value={playerStats.kill_pct ?? '—'}
+                  unit={playerStats.kill_pct == null ? '' : '%'} />
+                <StatCard label="Attack attempts" value={playerStats.total_attacks} />
+                <StatCard label="Attack errors" value={playerStats.attack_errors} color="#e74c3c" />
+                <StatCard label="Setter dumps" value={playerStats.setter_dumps} color="#8e44ad" />
               </div>
               <div style={styles.statRow}>
                 <StatCard label="Kills" value={playerStats.kills} color="#2ecc71" />
-                <StatCard label="Kill blocks" value={playerStats.kill_blocks ?? 0} color="#9b59b6" />
+                <StatCard label="Block points" value={playerStats.block_points} color="#9b59b6" />
+                <StatCard label="Block touches" value={playerStats.block_touches} color="#e67e22" />
                 <StatCard label="Aces" value={playerStats.aces} color="#3498db" />
-                <StatCard label="Blocks" value={playerStats.blocks} color="#e67e22" />
                 <StatCard label="Digs" value={playerStats.digs} color="#1abc9c" />
+                <StatCard label="Assists" value={playerStats.assists} color="#f39c12" />
+                <StatCard label="Total points" value={playerStats.total_points} color="#F5C800" />
+                <StatCard label="Foot faults" value={playerStats.foot_faults} color="#e74c3c" />
+                <StatCard label="Net touches" value={playerStats.net_touches} color="#e74c3c" />
+              </div>
+              <div style={styles.statRow}>
+                <StatCard label="Serve in %" value={playerStats.serve_in_pct ?? '—'}
+                  unit={playerStats.serve_in_pct == null ? '' : '%'} color="#3498db" />
+                <StatCard label="Ace %" value={playerStats.ace_pct ?? '—'}
+                  unit={playerStats.ace_pct == null ? '' : '%'} color="#2980b9" />
+                <StatCard label="Serve efficiency" value={playerStats.serve_efficiency ?? '—'}
+                  unit={playerStats.serve_efficiency == null ? '' : '%'} color="#1abc9c" />
+                <StatCard label="Serve errors" value={playerStats.serve_errors} color="#e74c3c" />
+                <StatCard label="Serve attempts" value={playerStats.serve_attempts} />
+              </div>
+              <div style={styles.statRow}>
+                <StatCard label="Pass average" value={playerStats.pass_average ?? '—'}
+                  unit={playerStats.pass_average == null ? '' : '/3'} color="#1abc9c" />
+                <StatCard label="Positive pass %" value={playerStats.positive_pass_pct ?? '—'}
+                  unit={playerStats.positive_pass_pct == null ? '' : '%'} color="#2ecc71" />
+                <StatCard label="Perfect pass %" value={playerStats.perfect_pass_pct ?? '—'}
+                  unit={playerStats.perfect_pass_pct == null ? '' : '%'} color="#F5C800" />
+                <StatCard label="Reception error %" value={playerStats.reception_error_pct ?? '—'}
+                  unit={playerStats.reception_error_pct == null ? '' : '%'} color="#e74c3c" />
+                <StatCard label="Rated receptions" value={playerStats.reception_attempts} />
+              </div>
+              <div style={styles.statRow}>
+                <StatCard label="Sets played" value={playerStats.sets_played || '—'} />
+                <StatCard label="Kills / set" value={playerStats.kills_per_set ?? '—'} />
+                <StatCard label="Aces / set" value={playerStats.aces_per_set ?? '—'} />
+                <StatCard label="Digs / set" value={playerStats.digs_per_set ?? '—'} />
+                <StatCard label="Assists / set" value={playerStats.assists_per_set ?? '—'} />
+                <StatCard label="Blocks / set" value={playerStats.blocks_per_set ?? '—'} />
               </div>
 
               {playerHistory.length > 1 && (
@@ -373,14 +434,14 @@ function Analytics() {
                       </ResponsiveContainer>
                     </div>
                     <div style={styles.chartCard}>
-                      <div style={styles.chartTitle}>Blocks & digs</div>
+                      <div style={styles.chartTitle}>Block points & digs</div>
                       <ResponsiveContainer width="100%" height={mobile ? 140 : 180}>
                         <BarChart data={[...playerHistory].reverse()}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                           <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#888' }} />
                           <YAxis tick={{ fontSize: 9, fill: '#888' }} width={20} />
                           <Tooltip content={<CustomTooltip />} cursor={{ fill: '#2a2a2a' }} />
-                          <Bar dataKey="blocks" name="Blocks" radius={[4,4,0,0]} fill="#9b59b6" fillOpacity={0.8} />
+                          <Bar dataKey="kill_blocks" name="Block points" radius={[4,4,0,0]} fill="#9b59b6" fillOpacity={0.8} />
                           <Bar dataKey="digs" name="Digs" radius={[4,4,0,0]} fill="#1abc9c" fillOpacity={0.8} />
                         </BarChart>
                       </ResponsiveContainer>

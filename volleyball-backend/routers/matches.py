@@ -13,6 +13,7 @@ from models import (
     MatchTrackerState,
     Player,
     SetScore,
+    SetParticipation,
     SpectatorSession,
     Team,
 )
@@ -136,6 +137,8 @@ def delete_match(match_id: int, db: Session = Depends(get_db),
         MatchTrackerState.match_id == match_id).delete(synchronize_session=False)
     db.query(MatchLineup).filter(
         MatchLineup.match_id == match_id).delete(synchronize_session=False)
+    db.query(SetParticipation).filter(
+        SetParticipation.match_id == match_id).delete(synchronize_session=False)
     db.query(Availability).filter(
         Availability.match_id == match_id).delete(synchronize_session=False)
     db.query(SetScore).filter(
@@ -182,6 +185,20 @@ def log_event(match_id: int, event: MatchEventCreate,
         raise HTTPException(status_code=400, detail="Pass rating must be 0, 1, 2, or 3")
     if event.event_type == "pass" and event.pass_rating is None:
         raise HTTPException(status_code=400, detail="Pass events require a rating")
+    if event.assist_player_id is not None:
+        if event.event_type not in {"kill", "setter_dump"}:
+            raise HTTPException(status_code=400,
+                detail="Assists can only be attached to a kill")
+        if event.assist_player_id == event.player_id:
+            raise HTTPException(status_code=400,
+                detail="A player cannot assist their own kill")
+        assister = db.query(Player).filter(
+            Player.id == event.assist_player_id,
+            Player.team_id == match.our_team_id,
+        ).first()
+        if not assister:
+            raise HTTPException(status_code=400,
+                detail="Assist player does not belong to the tracking team")
     if event.event_type == "score_correction_us":
         our, _ = calculate_score(match_id, match.current_set, db)
         if our <= 0:
@@ -209,6 +226,7 @@ def log_event(match_id: int, event: MatchEventCreate,
         rotation_number=event.rotation_number,
         we_were_serving=event.we_are_serving,
         pass_rating=event.pass_rating,
+        assist_player_id=event.assist_player_id,
         state_before_json=json.dumps(event.state_before) if event.state_before else None,
     ))
     db.commit()
@@ -374,6 +392,18 @@ def set_lineup(match_id: int, data: MatchLineupUpdate,
             is_on_court=False,
             updated_at=datetime.utcnow()
         ))
+    for pid in data.on_court:
+        exists = db.query(SetParticipation.id).filter_by(
+            match_id=match_id,
+            set_number=match.current_set,
+            player_id=pid,
+        ).first()
+        if not exists:
+            db.add(SetParticipation(
+                match_id=match_id,
+                set_number=match.current_set,
+                player_id=pid,
+            ))
     db.commit()
     return {"message": "Lineup saved"}
 
@@ -453,6 +483,18 @@ def log_substitution(match_id: int, data: MatchSubstitutionCreate,
         player_in_id=data.player_in_id,
         rotation_number=data.rotation_number,
     )
+    for player_id in (data.player_out_id, data.player_in_id):
+        exists = db.query(SetParticipation.id).filter_by(
+            match_id=match_id,
+            set_number=data.set_number,
+            player_id=player_id,
+        ).first()
+        if not exists:
+            db.add(SetParticipation(
+                match_id=match_id,
+                set_number=data.set_number,
+                player_id=player_id,
+            ))
     db.add(substitution)
     db.commit()
     return {"message": "Substitution recorded", "sequence": sequence}
@@ -489,6 +531,10 @@ def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
         db.query(MatchEventContext).filter(MatchEventContext.event_id.in_(
             [event.id for event in events])).all()} if events else {}
     player_ids = {event.player_id for event in events if event.player_id}
+    player_ids.update(
+        context.assist_player_id for context in event_contexts.values()
+        if context.assist_player_id
+    )
     player_names = {player.id: player.name for player in db.query(Player).filter(
         Player.id.in_(player_ids)).all()} if player_ids else {}
     return {
@@ -503,6 +549,12 @@ def get_spectator_snapshot(match_id: int, db: Session = Depends(get_db)):
             "event_type": event.event_type,
             "pass_rating": event_contexts[event.id].pass_rating
                 if event.id in event_contexts else None,
+            "assist_player_id": event_contexts[event.id].assist_player_id
+                if event.id in event_contexts else None,
+            "assist_player_name": player_names.get(
+                event_contexts[event.id].assist_player_id)
+                if event.id in event_contexts and
+                event_contexts[event.id].assist_player_id else None,
             "set_number": event.set_number,
             "timestamp": event.timestamp,
         } for event in events],

@@ -62,7 +62,6 @@ const EVENT_GROUPS = [
     events: [
       { type: 'block',  label: 'Block',  color: '#d35400', points: null },
       { type: 'dig',    label: 'Dig',    color: '#16a085', points: null },
-      { type: 'assist', label: 'Assist', color: '#7f8c8d', points: null },
     ]
   },
 ];
@@ -86,8 +85,8 @@ const POSITION_ORDER = {
 };
 
 const PASS_RATINGS = [
-  { rating: 0, label: 'Pass Error', shortLabel: 'Error', emoji: '❌', color: '#c0392b' },
-  { rating: 1, label: 'Poor Pass', shortLabel: 'Poor', emoji: '⚠️', color: '#d35400' },
+  { rating: 0, label: 'Unplayable', shortLabel: 'Error', emoji: '❌', color: '#c0392b' },
+  { rating: 1, label: 'Out of System', shortLabel: 'Out Sys', emoji: '⚠️', color: '#d35400' },
   { rating: 2, label: 'Good Pass', shortLabel: 'Good', emoji: '👍', color: '#2980b9' },
   { rating: 3, label: 'Perfect Pass', shortLabel: 'Perfect', emoji: '⭐', color: '#27ae60' },
 ];
@@ -138,6 +137,7 @@ function LiveMatch() {
   const [errorsEnabled, setErrorsEnabled] = useState(false);
   const [showSpectatorQR, setShowSpectatorQR] = useState(false);
   const [eventSaving, setEventSaving] = useState(false);
+  const [pendingAssist, setPendingAssist] = useState(null);
 
   useEffect(() => {
     const handleResize = () => setMobile(window.innerWidth <= 700);
@@ -343,13 +343,24 @@ function LiveMatch() {
     return true;
   };
 
-  const handleEvent = async (eventType, passRating = null) => {
+  const handleEvent = async (eventType, passRating = null, assistPlayerId = undefined) => {
     if (eventSaving) return;
     const ev = ALL_EVENTS.find(e => e.type === eventType);
     const isScoreOnly = ['opponent_point', 'our_point',
       'score_correction_us', 'score_correction_them'].includes(eventType);
     if (!selectedPlayer && !isScoreOnly) {
       alert('Select a player first');
+      return;
+    }
+    if (['kill', 'setter_dump'].includes(eventType)
+        && assistPlayerId === undefined) {
+      const candidates = positions.filter(player => player
+        && player.id !== selectedPlayer?.id).sort((a, b) => {
+          if (a.position === 'Setter' && b.position !== 'Setter') return -1;
+          if (a.position !== 'Setter' && b.position === 'Setter') return 1;
+          return a.name.localeCompare(b.name);
+        });
+      setPendingAssist({ eventType, passRating, candidates });
       return;
     }
     if (ev?.serverOnly && selectedPlayer?.id !== serverPlayer?.id) {
@@ -365,6 +376,7 @@ function LiveMatch() {
       rotation_number: rotationNumber,
       we_are_serving: weAreServing,
       pass_rating: passRating,
+      assist_player_id: assistPlayerId ?? null,
       state_before: {
         positions: positions.map(player => player.id),
         bench: bench.map(player => player.id),
@@ -580,6 +592,35 @@ function LiveMatch() {
           Scan to follow this match live
         </div>
         <button style={s.promptSkipBtn} onClick={() => setShowSpectatorQR(false)}>Close</button>
+      </div>
+    </div>
+  );
+
+  const AssistPrompt = () => !pendingAssist ? null : (
+    <div style={s.overlay}>
+      <div style={s.promptCard}>
+        <div style={s.promptTitle}>Who assisted the kill?</div>
+        <div style={s.promptSub}>Choose one player, or skip if there was no assist.</div>
+        <div style={s.promptBtns}>
+          {pendingAssist.candidates.map(player => (
+            <button key={player.id} style={{
+              ...s.promptBtn,
+              ...(player.position === 'Setter' ? s.promptBtnSuggested : {}),
+            }} onClick={() => {
+              const pending = pendingAssist;
+              setPendingAssist(null);
+              handleEvent(pending.eventType, pending.passRating, player.id);
+            }}>
+              {player.position === 'Setter' ? '★ ' : ''}{player.name}
+              <span style={s.promptRole}> · {player.position}</span>
+            </button>
+          ))}
+          <button style={s.promptSkipBtn} onClick={() => {
+            const pending = pendingAssist;
+            setPendingAssist(null);
+            handleEvent(pending.eventType, pending.passRating, null);
+          }}>No assist</button>
+        </div>
       </div>
     </div>
   );
@@ -824,6 +865,7 @@ function LiveMatch() {
       <div style={m.page}>
         <LiberoPrompt />
         <SpectatorQR />
+        <AssistPrompt />
         {actionError && <div role="alert" style={m.actionError}>{actionError}</div>}
 
         {/* Score bar */}
@@ -1111,6 +1153,7 @@ function LiveMatch() {
     <div style={s.page}>
       <LiberoPrompt />
       <SpectatorQR />
+      <AssistPrompt />
       {actionError && <div role="alert" style={s.trackingError}>{actionError}</div>}
 
       <div style={s.scoreHeader}>
@@ -1417,6 +1460,8 @@ const s = {
   promptSub: { fontSize: '13px', color: '#ccc', marginBottom: '16px', lineHeight: 1.5 },
   promptBtns: { display: 'flex', flexDirection: 'column', gap: '8px' },
   promptBtn: { padding: '11px', background: '#2a2a4a', color: 'white', border: '1px solid #F5C800', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
+  promptBtnSuggested: { background: '#3a3200', border: '2px solid #F5C800' },
+  promptRole: { color: '#aaa', fontSize: '11px', fontWeight: '400' },
   promptSkipBtn: { padding: '9px', background: 'transparent', color: '#666', border: '1px solid #333', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' },
   scoreHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: '#1a1a2e', borderBottom: '1px solid #2a2a4a' },
   scoreBlock: { textAlign: 'center', flex: 1 },
