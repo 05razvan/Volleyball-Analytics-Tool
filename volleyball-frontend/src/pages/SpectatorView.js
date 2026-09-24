@@ -16,6 +16,10 @@ const EVENT_LABELS = {
   opponent_point: { label: 'GUVC Error',   emoji: '🔴', color: '#e74c3c', point: 'them' },
   foot_fault:     { label: 'Foot Fault',   emoji: '👟', color: '#c0392b', point: 'them' },
   net_touch:      { label: 'Net Touch',    emoji: '🕸️', color: '#c0392b', point: 'them' },
+  spike_error:    { label: 'Spike Error',  emoji: '❌', color: '#c0392b', point: 'them' },
+  setter_dump:    { label: 'Setter Dump',  emoji: '🎯', color: '#8e44ad', point: 'us'   },
+  score_correction_us:   { label: 'GUVC Score −1', emoji: '↩️', color: '#888', point: null },
+  score_correction_them: { label: 'Opponent Score −1', emoji: '↩️', color: '#888', point: null },
 };
 
 const PASS_LABELS = [

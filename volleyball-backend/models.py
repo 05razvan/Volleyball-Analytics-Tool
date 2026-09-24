@@ -12,7 +12,8 @@ DIVISIONS = [
 POSITIONS = ["Setter", "Outside Hitter", "Opposite", "Middle Blocker", "Libero"]
 EVENT_TYPES = ["kill", "spike", "serve", "dig", "block", "kill_block", "ace",
                "serve_error", "assist", "opponent_point", "our_point", "pass",
-               "foot_fault", "net_touch"]
+               "foot_fault", "net_touch", "spike_error", "setter_dump",
+               "score_correction_us", "score_correction_them"]
 MATCH_TYPES = ["league", "cup", "friendly"]
 
 class User(Base):

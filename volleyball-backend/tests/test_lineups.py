@@ -17,6 +17,7 @@ from routers.matches import (
     calculate_score,
     create_match,
     delete_match,
+    end_set,
     get_spectator_snapshot,
     log_event,
     save_tracker_state,
@@ -24,7 +25,7 @@ from routers.matches import (
     spectator_heartbeat,
     undo_last_event,
 )
-from routers.analytics import home_away_analytics, rotation_analytics
+from routers.analytics import get_player_stats, home_away_analytics, rotation_analytics
 from routers.players import (
     PlayerProfileUpdate, delete_player, promote_captain, update_player_profile,
 )
@@ -294,6 +295,70 @@ def test_player_errors_award_opponent_point(lineup_data, event_type):
     ), db, admin)
 
     assert calculate_score(match.id, 1, db) == (0, 1)
+
+
+def test_spike_error_and_setter_dump_update_score_and_attack_stats(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    player = players[0]
+    for event_type in ("setter_dump", "spike_error"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=player.id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=False,
+        ), db, admin)
+
+    stats = get_player_stats(player.id, db, match_id=match.id)
+
+    assert calculate_score(match.id, 1, db) == (1, 1)
+    assert stats["setter_dumps"] == 1
+    assert stats["kills"] == 1
+    assert stats["errors"] == 1
+    assert stats["attack_efficiency"] == 0
+
+
+def test_score_corrections_do_not_create_player_stats(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    for event_type in ("our_point", "opponent_point"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=False,
+        ), db, admin)
+    for event_type in ("score_correction_us", "score_correction_them"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=False,
+        ), db, admin)
+
+    assert calculate_score(match.id, 1, db) == (0, 0)
+    assert get_player_stats(players[0].id, db, match_id=match.id)["total_attacks"] == 0
+
+
+def test_ending_set_requires_a_fresh_lineup(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    db.add_all([
+        MatchLineup(match_id=match.id, player_id=player.id)
+        for player in players[:6]
+    ])
+    db.add(MatchTrackerState(
+        match_id=match.id,
+        positions_json=str([player.id for player in players[:6]]),
+    ))
+    db.commit()
+
+    end_set(match.id, db, admin)
+
+    assert db.query(MatchLineup).filter_by(match_id=match.id).count() == 0
+    assert db.query(MatchTrackerState).filter_by(match_id=match.id).count() == 0
+    assert db.get(Match, match.id).current_set == 2
 
 
 def test_rejects_invalid_pass_rating(lineup_data):

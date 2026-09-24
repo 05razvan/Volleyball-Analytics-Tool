@@ -53,6 +53,8 @@ const EVENT_GROUPS = [
       { type: 'kill',       label: 'Kill',     color: '#27ae60', points: 'us'  },
       { type: 'kill_block', label: 'Kill Blk', color: '#8e44ad', points: 'us'  },
       { type: 'spike',      label: 'Spike',    color: '#2c3e50', points: null  },
+      { type: 'spike_error', label: 'Spike Error', color: '#a93226', points: 'them' },
+      { type: 'setter_dump', label: 'Setter Dump', color: '#6c3483', points: 'us' },
     ]
   },
   {
@@ -66,6 +68,22 @@ const EVENT_GROUPS = [
 ];
 
 const ALL_EVENTS = EVENT_GROUPS.flatMap(g => g.events);
+
+const POSITION_COLORS = {
+  Setter: '#8e44ad',
+  Opposite: '#e67e22',
+  'Middle Blocker': '#c0392b',
+  'Outside Hitter': '#2980b9',
+  Libero: '#d4ac0d',
+};
+
+const POSITION_ORDER = {
+  Setter: 0,
+  Opposite: 1,
+  'Middle Blocker': 2,
+  Libero: 2,
+  'Outside Hitter': 3,
+};
 
 const PASS_RATINGS = [
   { rating: 0, label: 'Pass Error', shortLabel: 'Error', emoji: '❌', color: '#c0392b' },
@@ -81,6 +99,10 @@ const PLAYER_ERRORS = [
 
 function rotateClockwise(positions) {
   return [positions[1], positions[2], positions[3], positions[4], positions[5], positions[0]];
+}
+
+function rotateCounterClockwise(positions) {
+  return [positions[5], positions[0], positions[1], positions[2], positions[3], positions[4]];
 }
 
 function LiveMatch() {
@@ -301,10 +323,32 @@ function LiveMatch() {
 
   const serverPlayer = positions[0];
 
+  const eventIsAvailable = (eventType, player = selectedPlayer) => {
+    if (!player || subMode || eventSaving) return false;
+    const courtIndex = positions.findIndex(p => p?.id === player.id);
+    const isFrontRow = [1, 2, 3].includes(courtIndex);
+    const isLibero = player.position === 'Libero';
+    if (['ace', 'serve', 'serve_error'].includes(eventType)) {
+      return player.id === serverPlayer?.id;
+    }
+    if (['block', 'kill_block'].includes(eventType)) {
+      return isFrontRow && !isLibero;
+    }
+    if (eventType === 'setter_dump') {
+      return player.position === 'Setter' && isFrontRow;
+    }
+    if (['kill', 'spike', 'spike_error'].includes(eventType) && isLibero) {
+      return false;
+    }
+    return true;
+  };
+
   const handleEvent = async (eventType, passRating = null) => {
     if (eventSaving) return;
     const ev = ALL_EVENTS.find(e => e.type === eventType);
-    if (!selectedPlayer && eventType !== 'opponent_point' && eventType !== 'our_point') {
+    const isScoreOnly = ['opponent_point', 'our_point',
+      'score_correction_us', 'score_correction_them'].includes(eventType);
+    if (!selectedPlayer && !isScoreOnly) {
       alert('Select a player first');
       return;
     }
@@ -315,7 +359,7 @@ function LiveMatch() {
 
     const event = {
       match_id: parseInt(matchId),
-      player_id: selectedPlayer?.id ?? null,
+      player_id: isScoreOnly ? null : (selectedPlayer?.id ?? null),
       event_type: eventType,
       set_number: score?.current_set ?? 1,
       rotation_number: rotationNumber,
@@ -348,15 +392,19 @@ function LiveMatch() {
     setEventSaving(false);
     setLastEvent({
       ...event,
-      playerName: selectedPlayer?.name,
+      playerName: isScoreOnly ? null : selectedPlayer?.name,
       previousState: {
         positions, bench, activeLiberoSwap, weAreServing, rotationNumber,
         passingEnabled, errorsEnabled,
       },
     });
-    const eventPlayer = selectedPlayer; // capture before clearing
-    setSelectedPlayer(null);
+    const eventPlayer = selectedPlayer;
+    if (!isScoreOnly) setSelectedPlayer(null);
     fetchScore();
+
+    if (['score_correction_us', 'score_correction_them'].includes(eventType)) {
+      return;
+    }
 
     if (eventType === 'opponent_point') {
       setWeAreServing(false);
@@ -364,7 +412,7 @@ function LiveMatch() {
       return;
     }
 
-    if (['kill', 'ace', 'our_point', 'kill_block'].includes(eventType)) {
+    if (['kill', 'ace', 'our_point', 'kill_block', 'setter_dump'].includes(eventType)) {
       if (!weAreServing) {
         const { positions: newPos, bench: newBench, swap: newSwap } =
           doRotation(positions, bench, activeLiberoSwap);
@@ -383,7 +431,7 @@ function LiveMatch() {
       return;
     }
 
-    if (['serve_error', 'foot_fault', 'net_touch'].includes(eventType)) {
+    if (['serve_error', 'foot_fault', 'net_touch', 'spike_error'].includes(eventType)) {
       if (eventType === 'serve_error' && eventPlayer &&
           isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id) {
         triggerLiberoPrompt(eventPlayer, 0);
@@ -392,6 +440,33 @@ function LiveMatch() {
       await saveTrackerState(positions, bench, false, rotationNumber);
       return;
     }   
+  };
+
+  const handleManualRotation = async (direction) => {
+    if (eventSaving) return;
+    const previousPositions = positions;
+    const previousRotation = rotationNumber;
+    const nextPositions = direction === 'forward'
+      ? rotateClockwise(positions)
+      : rotateCounterClockwise(positions);
+    const nextRotation = direction === 'forward'
+      ? (rotationNumber === 6 ? 1 : rotationNumber + 1)
+      : (rotationNumber === 1 ? 6 : rotationNumber - 1);
+    setPositions(nextPositions);
+    setRotationNumber(nextRotation);
+    setSelectedPlayer(null);
+    setActionError('');
+    try {
+      await apiSaveLineup(matchId, {
+        on_court: nextPositions.map(player => player.id),
+        bench: bench.map(player => player.id),
+      });
+      await saveTrackerState(nextPositions, bench, weAreServing, nextRotation);
+    } catch (error) {
+      setPositions(previousPositions);
+      setRotationNumber(previousRotation);
+      setActionError(`Could not correct rotation: ${error.message}`);
+    }
   };
 
   const handleUndo = async () => {
@@ -442,14 +517,16 @@ function LiveMatch() {
     if (!window.confirm(`End set ${score?.current_set}?`)) return;
     await apiEndSet(matchId);
     setSelectedPlayer(null);
-    const nextSet = (score?.current_set ?? 1) + 1;
-    if (nextSet === 5) setPhase('serve_select');
-    else {
-      const nextServing = !weAreServing;
-      setWeAreServing(nextServing);
-      await saveTrackerState(positions, bench, nextServing, rotationNumber);
-    }
-    fetchScore();
+    setPositions([null, null, null, null, null, null]);
+    setBench([...allPlayers].sort((a, b) => a.name.localeCompare(b.name)));
+    setActiveLiberoSwap(null);
+    setSubMode(false);
+    setSubTarget(null);
+    setRotationNumber(1);
+    setWeAreServing(false);
+    setLastEvent(null);
+    setPhase('lineup');
+    await fetchScore();
   };
 
   const handleComplete = async () => {
@@ -530,6 +607,18 @@ function LiveMatch() {
   const opponentName = teamName(opponentId);
   const setsWon = (score.sets||[]).filter(st => st.us > st.them).length;
   const setsLost = (score.sets||[]).filter(st => st.them > st.us).length;
+  const orderedOnCourt = positions
+    .map((player, courtIndex) => ({ player, courtIndex }))
+    .filter(({ player }) => Boolean(player))
+    .sort((a, b) => {
+      const roleDifference = (POSITION_ORDER[a.player.position] ?? 9)
+        - (POSITION_ORDER[b.player.position] ?? 9);
+      if (roleDifference) return roleDifference;
+      if (a.player.position === 'Middle Blocker' && b.player.position === 'Libero') return -1;
+      if (a.player.position === 'Libero' && b.player.position === 'Middle Blocker') return 1;
+      return (a.player.jersey_number ?? 999) - (b.player.jersey_number ?? 999)
+        || a.player.name.localeCompare(b.player.name);
+    });
 
   // ── LINEUP PHASE ─────────────────────────────────────────────
   if (phase === 'lineup') {
@@ -1063,6 +1152,14 @@ function LiveMatch() {
         <button style={s.undoBtn} onClick={() => setShowSpectatorQR(true)}>Spectator QR</button>
         <button style={s.undoBtn} onClick={handleUndo}>↩ Undo</button>
         {undoMsg && <span style={s.undoMsg}>{undoMsg}</span>}
+        <button style={s.rotationBtn} onClick={() => handleManualRotation('backward')}>← Rotation</button>
+        <button style={s.rotationBtn} onClick={() => handleManualRotation('forward')}>Rotation →</button>
+        <button style={s.scoreCorrectionBtn}
+          disabled={(score?.current_set_our ?? 0) <= 0 || eventSaving}
+          onClick={() => handleEvent('score_correction_us')}>−1 {ourTeamName}</button>
+        <button style={s.scoreCorrectionBtn}
+          disabled={(score?.current_set_opponent ?? 0) <= 0 || eventSaving}
+          onClick={() => handleEvent('score_correction_them')}>−1 {opponentName}</button>
         <div style={{ flex:1 }} />
         <button style={s.endSetBtn} onClick={handleEndSet}>End Set</button>
         <button style={s.endMatchBtn} onClick={handleComplete}>End Match</button>
@@ -1107,24 +1204,30 @@ function LiveMatch() {
           </div>
 
           <div style={s.panelTitle}>On court</div>
-          {positions.map((player, i) => {
-            if (!player) return null;
-            const isServer = i === 0;
+          {orderedOnCourt.map(({ player, courtIndex }) => {
+            const isServer = courtIndex === 0;
+            const isFrontRow = [1, 2, 3].includes(courtIndex);
+            const roleColor = POSITION_COLORS[player.position] ?? '#666';
             return (
-              <div key={i} style={s.playerSlot}>
+              <div key={player.id} style={s.playerSlot}>
                 <button
                   style={{
                     ...s.playerBtn,
+                    background: `${roleColor}22`,
                     ...(selectedPlayer?.id===player.id ? s.playerBtnActive : {}),
                     ...(subMode ? s.playerBtnSubOut : {}),
                     ...(isServer&&weAreServing ? s.playerBtnServer : {}),
+                    borderLeft: `8px solid ${roleColor}`,
                   }}
                   onClick={() => {
                     if (subMode) handleSubOut(player);
                     else setSelectedPlayer(selectedPlayer?.id===player.id ? null : player);
                   }}>
                   <div style={s.playerBtnTop}>
-                    <span style={s.posTag}>P{i===0?1:i+1}</span>
+                    <span style={{ ...s.posTag, color: roleColor }}>{player.position ?? 'Player'}</span>
+                    <span style={s.courtStateTag}>
+                      P{courtIndex===0?1:courtIndex+1} · {isFrontRow ? 'FRONT' : 'BACK'}
+                    </span>
                     {isServer&&weAreServing&&<span style={s.servTag}>SRV</span>}
                     {activeLiberoSwap?.libero.id===player.id&&
                       <span style={s.libTag}>LIB</span>}
@@ -1183,16 +1286,18 @@ function LiveMatch() {
           </button>
           {passingEnabled && (
             <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
-              {PASS_RATINGS.map(pass => (
-                <button key={pass.rating} style={{ ...s.eventBtn, background: pass.color,
-                  opacity: selectedPlayer && !eventSaving ? 1 : 0.3,
-                  cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed' }}
-                  disabled={!selectedPlayer || eventSaving}
+              {PASS_RATINGS.map(pass => {
+                const canPass = selectedPlayer && selectedPlayer.position !== 'Setter'
+                  && !eventSaving && !subMode;
+                return <button key={pass.rating} style={{ ...s.eventBtn, background: pass.color,
+                  opacity: canPass ? 1 : 0.22,
+                  cursor: canPass ? 'pointer' : 'not-allowed' }}
+                  disabled={!canPass}
                   onClick={() => handleEvent('pass', pass.rating)}>
                   <span>{pass.emoji} {pass.label}</span>
                   <span style={s.pointHint}>{pass.rating}/3</span>
-                </button>
-              ))}
+                </button>;
+              })}
             </div>
           )}
           <button style={{
@@ -1219,34 +1324,32 @@ function LiveMatch() {
             </div>
           )}
           {EVENT_GROUPS.map(group => {
-            const isServeGroup = group.label === 'Serve';
-            const canUseGroup = !isServeGroup || selectedPlayer?.id === serverPlayer?.id;
             return (
               <div key={group.label} style={s.eventGroup}>
                 <div style={s.eventGroupLabel}>
                   {group.label}
-                  {isServeGroup&&serverPlayer&&
+                  {group.label === 'Serve'&&serverPlayer&&
                     <span style={s.serverOnlyHint}> — {serverPlayer.name} only</span>}
                 </div>
                 <div style={s.eventGrid}>
-                  {group.events.map(ev => (
-                    <button key={ev.type}
+                  {group.events.map(ev => {
+                    const canUse = eventIsAvailable(ev.type);
+                    return <button key={ev.type}
                       style={{
                         ...s.eventBtn,
                         background: ev.color,
-                        opacity: (selectedPlayer&&!subMode&&canUseGroup&&!eventSaving) ? 1 : 0.3,
-                        cursor: (selectedPlayer&&!subMode&&canUseGroup)
-                          ? 'pointer' : 'not-allowed',
+                        opacity: canUse ? 1 : 0.22,
+                        cursor: canUse ? 'pointer' : 'not-allowed',
                       }}
-                      disabled={!selectedPlayer || subMode || !canUseGroup || eventSaving}
-                      onClick={() => !subMode && !eventSaving && handleEvent(ev.type)}>
+                      disabled={!canUse}
+                      onClick={() => canUse && handleEvent(ev.type)}>
                       <span>{ev.label}</span>
                       {ev.points==='us' &&
                         <span style={s.pointHint}>+1 {ourTeamName}</span>}
                       {ev.points==='them' &&
                         <span style={s.pointHint}>+1 {opponentName}</span>}
-                    </button>
-                  ))}
+                    </button>;
+                  })}
                 </div>
               </div>
             );
@@ -1327,8 +1430,10 @@ const s = {
   setPill: { fontSize: '10px', background: '#2a2a4a', padding: '2px 6px', borderRadius: '8px', color: '#aaa' },
   ourBtn: { padding: '8px 14px', background: '#1f7a49', color: 'white', border: '1px solid #32a867', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
   opponentBtn: { padding: '8px 14px', background: '#a52b22', color: 'white', border: '1px solid #d54a3e', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
-  controls: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: '#141428', borderBottom: '1px solid #2a2a4a' },
-  undoBtn: { padding: '5px 10px', background: '#2a2a4a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' },
+  controls: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: '#141428', borderBottom: '1px solid #2a2a4a', flexWrap: 'wrap' },
+  undoBtn: { minHeight: '42px', padding: '8px 12px', background: '#2a2a4a', color: 'white', border: 'none', borderRadius: '7px', cursor: 'pointer', fontSize: '12px' },
+  rotationBtn: { minHeight: '42px', padding: '8px 13px', background: '#1a3a6e', color: '#d6eaff', border: '1px solid #2e6ab5', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' },
+  scoreCorrectionBtn: { minHeight: '42px', padding: '8px 13px', background: '#3a2020', color: '#ffb4b4', border: '1px solid #7d3939', borderRadius: '7px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' },
   undoMsg: { fontSize: '10px', color: '#2ecc71' },
   endSetBtn: { padding: '5px 10px', background: '#d35400', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' },
   endMatchBtn: { padding: '5px 10px', background: '#922b21', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' },
@@ -1355,6 +1460,7 @@ const s = {
   playerBtnSubOut: { border: '1px solid #e74c3c' },
   playerBtnServer: { border: '1px solid #2ecc71' },
   posTag: { fontSize: '8px', color: '#555', fontWeight: '700', background: '#2a2a4a', padding: '1px 3px', borderRadius: '3px' },
+  courtStateTag: { fontSize: '8px', color: '#aaa', fontWeight: '700', letterSpacing: '0.03em' },
   servTag: { fontSize: '8px', color: '#2ecc71', fontWeight: '700', background: '#0a2a0a', padding: '1px 3px', borderRadius: '3px' },
   libTag: { fontSize: '8px', color: '#F5C800', fontWeight: '700', background: '#1a1a00', padding: '1px 3px', borderRadius: '3px' },
   benchBtn: { background: '#111120', border: '1px solid #1e1e38', opacity: 0.65, marginBottom: '4px', width: '100%' },
@@ -1367,12 +1473,12 @@ const s = {
   eventGroup: { marginBottom: '14px' },
   eventGroupLabel: { fontSize: '10px', color: '#F5C800', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' },
   serverOnlyHint: { color: '#888', fontWeight: '400', textTransform: 'none' },
-  eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' },
+  eventGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px' },
   passingToggle: { marginBottom: '12px', padding: '10px 12px', color: '#aaa', background: '#20202f', border: '1px solid #555', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' },
   passingToggleOn: { color: '#111', background: '#F5C800', border: '1px solid #F5C800' },
   errorToggleOn: { color: '#fff', background: '#7d2929', border: '1px solid #d54a3e' },
   trackingError: { padding: '9px 14px', color: '#ffb4b4', background: '#3a1717', borderBottom: '1px solid #7d2929', fontSize: '12px', textAlign: 'center' },
-  eventBtn: { padding: '22px 12px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '12px', cursor: 'pointer', color: 'white', fontWeight: '800', fontSize: '15px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', minHeight: '88px', justifyContent: 'center', boxShadow: '0 3px 8px rgba(0,0,0,0.22)' },
+  eventBtn: { padding: '16px 10px', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '12px', cursor: 'pointer', color: 'white', fontWeight: '800', fontSize: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minHeight: '72px', justifyContent: 'center', boxShadow: '0 3px 8px rgba(0,0,0,0.22)' },
   pointHint: { fontSize: '9px', fontWeight: '400', opacity: 0.8 },
   lastEvent: { fontSize: '11px', color: '#aaa', padding: '6px 10px', background: '#1a1a2e', borderRadius: '6px', display: 'inline-block', marginTop: '8px' },
   empty: { color: '#555', fontSize: '13px' },

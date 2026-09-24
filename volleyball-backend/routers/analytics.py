@@ -19,10 +19,11 @@ def get_player_stats(player_id: int, db: Session,
         query = query.filter(MatchEvent.match_id.in_(match_ids))
     events = query.all()
 
-    kills = sum(1 for e in events if e.event_type == "kill")
+    setter_dumps = sum(1 for e in events if e.event_type == "setter_dump")
+    kills = sum(1 for e in events if e.event_type == "kill") + setter_dumps
     kill_blocks = sum(1 for e in events if e.event_type == "kill_block")
     spikes = sum(1 for e in events if e.event_type == "spike")
-    errors = sum(1 for e in events if e.event_type == "error")
+    errors = sum(1 for e in events if e.event_type in {"error", "spike_error"})
     aces = sum(1 for e in events if e.event_type == "ace")
     serve_errors = sum(1 for e in events if e.event_type == "serve_error")
     blocks = sum(1 for e in events if e.event_type == "block")
@@ -44,6 +45,7 @@ def get_player_stats(player_id: int, db: Session,
       "player_id": player_id,
       "kills": kills,
       "kill_blocks": kill_blocks,
+      "setter_dumps": setter_dumps,
       "spikes": spikes,
       "errors": errors,
       "aces": aces,
@@ -152,16 +154,16 @@ def rotation_analytics(team_id: int, last_n: Optional[int] = None,
             MatchEventContext.rotation_number == number,
         ).all() if match_ids else []
         point_rows = [(event, context) for event, context in rows
-                      if event.event_type in {"kill", "ace", "our_point", "kill_block",
+                      if event.event_type in {"kill", "ace", "our_point", "kill_block", "setter_dump",
                                               "serve_error", "opponent_point",
-                                              "foot_fault", "net_touch"}]
+                                              "foot_fault", "net_touch", "spike_error"}]
         points_for = sum(1 for event, _ in point_rows
-                         if event.event_type in {"kill", "ace", "our_point", "kill_block"})
+                         if event.event_type in {"kill", "ace", "our_point", "kill_block", "setter_dump"})
         points_against = len(point_rows) - points_for
         receive_rallies = [(event, context) for event, context in point_rows
                            if not context.we_were_serving]
         sideouts = sum(1 for event, _ in receive_rallies
-                       if event.event_type in {"kill", "our_point", "kill_block"})
+                       if event.event_type in {"kill", "our_point", "kill_block", "setter_dump"})
         rotations.append({
             "rotation": number,
             "points_for": points_for,
@@ -198,8 +200,8 @@ def home_away_analytics(team_id: int, last_n: Optional[int] = None,
         match_ids = [match.id for match in group]
         events = db.query(MatchEvent).filter(
             MatchEvent.match_id.in_(match_ids)).all() if match_ids else []
-        kills = sum(event.event_type == "kill" for event in events)
-        attacks = sum(event.event_type in {"kill", "spike", "error"}
+        kills = sum(event.event_type in {"kill", "setter_dump"} for event in events)
+        attacks = sum(event.event_type in {"kill", "setter_dump", "spike", "error", "spike_error"}
                       for event in events)
         serve_errors = sum(event.event_type == "serve_error" for event in events)
         serves = sum(event.event_type in {"serve", "ace", "serve_error"}
@@ -217,10 +219,10 @@ def home_away_analytics(team_id: int, last_n: Optional[int] = None,
         ).filter(MatchEvent.match_id.in_(match_ids)).all() if match_ids else []
         receive_points = [(event, context) for event, context in context_rows
                           if not context.we_were_serving and
-                          event.event_type in {"kill", "our_point", "kill_block",
+                          event.event_type in {"kill", "our_point", "kill_block", "setter_dump",
                                                "serve_error", "opponent_point",
-                                               "foot_fault", "net_touch"}]
-        sideouts = sum(event.event_type in {"kill", "our_point", "kill_block"}
+                                               "foot_fault", "net_touch", "spike_error"}]
+        sideouts = sum(event.event_type in {"kill", "our_point", "kill_block", "setter_dump"}
                        for event, _ in receive_points)
         return {
             "matches": len(group),
@@ -256,8 +258,10 @@ def team_trend(team_id: int, last_n: int = 5, db: Session = Depends(get_db)):
             Player.team_id == team_id).all()]
         our_events = [e for e in events if e.player_id in player_ids]
 
-        kills = sum(1 for e in our_events if e.event_type == "kill")
-        errors = sum(1 for e in our_events if e.event_type == "error")
+        kills = sum(1 for e in our_events
+                    if e.event_type in {"kill", "setter_dump"})
+        errors = sum(1 for e in our_events
+                     if e.event_type in {"error", "spike_error"})
         spikes = sum(1 for e in our_events if e.event_type == "spike")
         aces = sum(1 for e in our_events if e.event_type == "ace")
         serve_errors = sum(1 for e in our_events if e.event_type == "serve_error")
@@ -331,7 +335,8 @@ def match_top_performers(match_id: int, db: Session = Depends(get_db)):
         if not p:
             continue
         p_events = [e for e in events if e.player_id == pid]
-        kills = sum(1 for e in p_events if e.event_type == "kill")
+        kills = sum(1 for e in p_events
+                    if e.event_type in {"kill", "setter_dump"})
         blocks = sum(1 for e in p_events if e.event_type == "block")
         aces = sum(1 for e in p_events if e.event_type == "ace")
         digs = sum(1 for e in p_events if e.event_type == "dig")

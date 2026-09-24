@@ -33,8 +33,10 @@ import json
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
-POINTS_FOR_US = {"kill", "ace", "our_point", "kill_block"}
-POINTS_FOR_THEM = {"serve_error", "opponent_point", "foot_fault", "net_touch"}
+POINTS_FOR_US = {"kill", "ace", "our_point", "kill_block", "setter_dump"}
+POINTS_FOR_THEM = {
+    "serve_error", "opponent_point", "foot_fault", "net_touch", "spike_error",
+}
 
 def team_gender(team: Team):
     if team.division.startswith("Men's"):
@@ -48,8 +50,10 @@ def calculate_score(match_id: int, set_number: int, db: Session):
         MatchEvent.match_id == match_id,
         MatchEvent.set_number == set_number
     ).all()
-    our = sum(1 for e in events if e.event_type in POINTS_FOR_US)
-    their = sum(1 for e in events if e.event_type in POINTS_FOR_THEM)
+    our = (sum(1 for e in events if e.event_type in POINTS_FOR_US)
+           - sum(1 for e in events if e.event_type == "score_correction_us"))
+    their = (sum(1 for e in events if e.event_type in POINTS_FOR_THEM)
+             - sum(1 for e in events if e.event_type == "score_correction_them"))
     return our, their
 
 def check_match_permission(match: Match, current_user, db: Session):
@@ -178,6 +182,14 @@ def log_event(match_id: int, event: MatchEventCreate,
         raise HTTPException(status_code=400, detail="Pass rating must be 0, 1, 2, or 3")
     if event.event_type == "pass" and event.pass_rating is None:
         raise HTTPException(status_code=400, detail="Pass events require a rating")
+    if event.event_type == "score_correction_us":
+        our, _ = calculate_score(match_id, match.current_set, db)
+        if our <= 0:
+            raise HTTPException(status_code=400, detail="Our score is already zero")
+    if event.event_type == "score_correction_them":
+        _, their = calculate_score(match_id, match.current_set, db)
+        if their <= 0:
+            raise HTTPException(status_code=400, detail="Opponent score is already zero")
     if event.player_id is not None:
         player = db.query(Player).filter(Player.id == event.player_id).first()
         if not player or player.team_id != match.our_team_id:
@@ -260,6 +272,10 @@ def end_set(match_id: int, db: Session = Depends(get_db),
                          our_score=our, opponent_score=their)
     db.add(set_score)
     match.current_set += 1
+    db.query(MatchLineup).filter(
+        MatchLineup.match_id == match_id).delete(synchronize_session=False)
+    db.query(MatchTrackerState).filter(
+        MatchTrackerState.match_id == match_id).delete(synchronize_session=False)
     db.commit()
     return {"message": f"Set {match.current_set - 1} ended",
             "our_score": our, "opponent_score": their}
