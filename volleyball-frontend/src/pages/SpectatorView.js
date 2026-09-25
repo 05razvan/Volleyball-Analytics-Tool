@@ -329,7 +329,9 @@ function SpectatorView() {
                       <span style={styles.feedPlayer}> · {playerName}</span>
                     )}
                     {event.assist_player_name && (
-                      <span style={styles.feedPlayer}> · assist {event.assist_player_name}</span>
+                      <span style={styles.feedPlayer}>
+                        {' · '}{event.event_type === 'kill' ? 'assist' : 'set by'} {event.assist_player_name}
+                      </span>
                     )}
                     {pointDesc && (
                       <span style={{

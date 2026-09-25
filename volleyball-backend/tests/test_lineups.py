@@ -370,6 +370,27 @@ def test_assist_is_linked_to_kill_and_removed_with_undo(lineup_data):
     assert get_player_stats(players[1].id, db)["assists"] == 0
 
 
+def test_set_attempts_include_all_attack_outcomes_but_only_kills_are_assists(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    hitter, setter = players[:2]
+    for event_type in ("kill", "spike", "spike_error"):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=hitter.id,
+            assist_player_id=setter.id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=False,
+        ), db, admin)
+
+    stats = get_player_stats(setter.id, db, match_id=match.id)
+
+    assert stats["set_attempts"] == 3
+    assert stats["assists"] == 1
+    assert stats["assist_conversion_pct"] == 33.3
+
+
 def test_reception_and_serve_metrics_use_all_attempts(lineup_data):
     db, admin, match, players, _ = lineup_data
     player = players[0]

@@ -213,6 +213,8 @@ function Players() {
               { label: 'Block points', value: playerStats.block_points, color: '#9b59b6' },
               { label: 'Digs', value: playerStats.digs, color: '#1abc9c' },
               { label: 'Assists', value: playerStats.assists, color: '#e67e22' },
+              { label: 'Set attempts', value: playerStats.set_attempts, color: '#9b59b6' },
+              { label: 'Set→assist', value: playerStats.assist_conversion_pct == null ? '—' : `${playerStats.assist_conversion_pct}%`, color: '#f39c12' },
             ].map(s => (
               <div key={s.label} style={styles.statBox}>
                 <div style={{ ...styles.statVal, color: s.color }}>{s.value}</div>

@@ -93,6 +93,8 @@ function Profile() {
               { label: 'Block touches', value: stats.block_touches, color: '#e67e22' },
               { label: 'Digs', value: stats.digs, color: '#1abc9c' },
               { label: 'Assists', value: stats.assists, color: '#e67e22' },
+              { label: 'Set attempts', value: stats.set_attempts, color: '#9b59b6' },
+              { label: 'Set→assist', value: stats.assist_conversion_pct == null ? '—' : `${stats.assist_conversion_pct}%`, color: '#f39c12' },
             ].map(s => (
               <div key={s.label} style={styles.pill}>
                 <div style={{ ...styles.pillValue, color: s.color }}>{s.value}</div>

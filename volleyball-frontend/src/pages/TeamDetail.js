@@ -195,6 +195,8 @@ function TeamDetail() {
             <StatBox label="Block points" value={playerStats.block_points} color="#9b59b6" />
             <StatBox label="Digs" value={playerStats.digs} color="#1abc9c" />
             <StatBox label="Assists" value={playerStats.assists} color="#e67e22" />
+            <StatBox label="Set attempts" value={playerStats.set_attempts} color="#9b59b6" />
+            <StatBox label="Set→assist" value={playerStats.assist_conversion_pct == null ? '—' : `${playerStats.assist_conversion_pct}%`} color="#f39c12" />
           </div>
           <div style={{ ...styles.statGrid, gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <StatBox label="Attack eff." value={playerStats.attack_efficiency == null ? '—' : `${playerStats.attack_efficiency}%`} color="#F5C800" />

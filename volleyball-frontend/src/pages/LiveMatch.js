@@ -420,7 +420,7 @@ function LiveMatch() {
       alert('Select a player first');
       return;
     }
-    if (['kill', 'setter_dump'].includes(eventType)
+    if (['kill', 'spike', 'spike_error'].includes(eventType)
         && assistPlayerId === undefined) {
       const candidates = positions.filter(player => player
         && player.id !== selectedPlayer?.id).sort((a, b) => {
@@ -734,8 +734,12 @@ function LiveMatch() {
   const AssistPrompt = () => !pendingAssist ? null : (
     <div style={s.overlay}>
       <div style={s.promptCard}>
-        <div style={s.promptTitle}>Who assisted the kill?</div>
-        <div style={s.promptSub}>Choose one player, or skip if there was no assist.</div>
+        <div style={s.promptTitle}>
+          {pendingAssist.eventType === 'kill' ? 'Who assisted the kill?' : 'Who set the attack?'}
+        </div>
+        <div style={s.promptSub}>
+          Choose the setter, or skip if the ball was not set by a tracked player.
+        </div>
         <div style={s.promptBtns}>
           {pendingAssist.candidates.map(player => (
             <button key={player.id} style={{
@@ -754,7 +758,7 @@ function LiveMatch() {
             const pending = pendingAssist;
             setPendingAssist(null);
             handleEvent(pending.eventType, pending.passRating, null);
-          }}>No assist</button>
+          }}>No setter</button>
         </div>
       </div>
     </div>

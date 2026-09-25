@@ -79,15 +79,20 @@ def get_player_stats(player_id: int, db: Session,
     blocks = sum(1 for e in events if e.event_type == "block")
     digs = sum(1 for e in events if e.event_type == "dig")
     legacy_assists = sum(1 for e in events if e.event_type == "assist")
-    assist_query = db.query(MatchEventContext).join(
+    set_query = db.query(MatchEventContext).join(
         MatchEvent, MatchEvent.id == MatchEventContext.event_id
-    ).filter(MatchEventContext.assist_player_id == player_id)
+    ).filter(
+        MatchEventContext.assist_player_id == player_id,
+        MatchEvent.event_type.in_({"kill", "spike", "spike_error"}),
+    )
     if match_id:
-        assist_query = assist_query.filter(MatchEvent.match_id == match_id)
+        set_query = set_query.filter(MatchEvent.match_id == match_id)
     elif selected_match_ids is not None:
-        assist_query = assist_query.filter(
+        set_query = set_query.filter(
             MatchEvent.match_id.in_(selected_match_ids))
-    assists = legacy_assists + assist_query.count()
+    set_attempts = set_query.count()
+    assists = legacy_assists + set_query.filter(
+        MatchEvent.event_type == "kill").count()
     serves = sum(1 for e in events if e.event_type == "serve")
     passes = [e for e in events if e.event_type == "pass"]
     pass_contexts = db.query(MatchEventContext).filter(
@@ -144,6 +149,8 @@ def get_player_stats(player_id: int, db: Session,
       "block_points": kill_blocks,
       "digs": digs,
       "assists": assists,
+      "set_attempts": set_attempts,
+      "assist_conversion_pct": percentage(assists, set_attempts),
       "kill_pct": percentage(kills, total_attacks),
       "attack_efficiency": percentage(kills - errors, total_attacks),
       "ace_pct": percentage(aces, total_serves),
@@ -217,6 +224,8 @@ def player_match_history(player_id: int, db: Session = Depends(get_db)):
             "attack_errors": stats["attack_errors"],
             "total_attacks": stats["total_attacks"],
             "assists": stats["assists"],
+            "set_attempts": stats["set_attempts"],
+            "assist_conversion_pct": stats["assist_conversion_pct"],
             "serve_attempts": stats["serve_attempts"],
             "serve_errors": stats["serve_errors"],
             "serve_in_pct": stats["serve_in_pct"],
@@ -258,6 +267,7 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
     total_blocks = sum(s["blocks"] for s in player_stats)
     total_digs = sum(s["digs"] for s in player_stats)
     total_assists = sum(s["assists"] for s in player_stats)
+    total_set_attempts = sum(s["set_attempts"] for s in player_stats)
     total_setter_dumps = sum(s["setter_dumps"] for s in player_stats)
     total_foot_faults = sum(s["foot_faults"] for s in player_stats)
     total_net_touches = sum(s["net_touches"] for s in player_stats)
@@ -302,6 +312,9 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
         "total_block_touches": total_blocks,
         "total_digs": total_digs,
         "total_assists": total_assists,
+        "total_set_attempts": total_set_attempts,
+        "team_assist_conversion_pct": percentage(
+            total_assists, total_set_attempts),
         "total_setter_dumps": total_setter_dumps,
         "total_foot_faults": total_foot_faults,
         "total_net_touches": total_net_touches,

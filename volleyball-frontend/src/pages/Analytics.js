@@ -196,6 +196,10 @@ function Analytics() {
               unit={teamStats.team_reception_error_pct == null ? '' : '%'} color="#e74c3c" />
             <StatCard label="Rated receptions" value={teamStats.team_pass_count} />
             <StatCard label="Assists" value={teamStats.total_assists} color="#e67e22" />
+            <StatCard label="Attributed sets" value={teamStats.total_set_attempts} color="#9b59b6" />
+            <StatCard label="Set-to-assist conversion" value={teamStats.team_assist_conversion_pct ?? '—'}
+              unit={teamStats.team_assist_conversion_pct == null ? '' : '%'} color="#f39c12"
+              help="Assists ÷ attributed set attempts" />
           </div>
 
           {homeAwayStats && (homeAwayStats.home.matches > 0 || homeAwayStats.away.matches > 0) && (
@@ -380,6 +384,10 @@ function Analytics() {
                 <StatCard label="Aces" value={playerStats.aces} color="#3498db" />
                 <StatCard label="Digs" value={playerStats.digs} color="#1abc9c" />
                 <StatCard label="Assists" value={playerStats.assists} color="#f39c12" />
+                <StatCard label="Set attempts" value={playerStats.set_attempts} color="#9b59b6" />
+                <StatCard label="Set-to-assist conversion" value={playerStats.assist_conversion_pct ?? '—'}
+                  unit={playerStats.assist_conversion_pct == null ? '' : '%'} color="#f39c12"
+                  help="Assists ÷ attributed set attempts" />
                 <StatCard label="Total points" value={playerStats.total_points} color="#F5C800" />
                 <StatCard label="Foot faults" value={playerStats.foot_faults} color="#e74c3c" />
                 <StatCard label="Net touches" value={playerStats.net_touches} color="#e74c3c" />

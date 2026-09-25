@@ -186,12 +186,12 @@ def log_event(match_id: int, event: MatchEventCreate,
     if event.event_type == "pass" and event.pass_rating is None:
         raise HTTPException(status_code=400, detail="Pass events require a rating")
     if event.assist_player_id is not None:
-        if event.event_type not in {"kill", "setter_dump"}:
+        if event.event_type not in {"kill", "spike", "spike_error"}:
             raise HTTPException(status_code=400,
-                detail="Assists can only be attached to a kill")
+                detail="A set can only be attached to an attack")
         if event.assist_player_id == event.player_id:
             raise HTTPException(status_code=400,
-                detail="A player cannot assist their own kill")
+                detail="A player cannot set their own attack")
         assister = db.query(Player).filter(
             Player.id == event.assist_player_id,
             Player.team_id == match.our_team_id,
