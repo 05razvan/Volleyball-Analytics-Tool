@@ -8,14 +8,15 @@ import {
   ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 
-function StatCard({ label, value, unit = '', color = '#F5C800' }) {
+function StatCard({ label, value, unit = '', color = '#F5C800', help, detail }) {
   return (
-    <div style={styles.statCard}>
+    <div style={styles.statCard} title={help || ''}>
       <div style={styles.statValue}>
         <span style={{ color }}>{value}</span>
         <span style={styles.statUnit}>{unit}</span>
       </div>
-      <div style={styles.statLabel}>{label}</div>
+      <div style={styles.statLabel}>{label}{help ? ' ⓘ' : ''}</div>
+      {detail && <div style={styles.statDetail}>{detail}</div>}
     </div>
   );
 }
@@ -155,7 +156,9 @@ function Analytics() {
           <h3 style={styles.sectionTitle}>Team overview</h3>
           <div style={styles.statRow}>
             <StatCard label="Attack efficiency" value={teamStats.team_attack_efficiency ?? '—'}
-              unit={teamStats.team_attack_efficiency == null ? '' : '%'} />
+              unit={teamStats.team_attack_efficiency == null ? '' : '%'}
+              help="(Kills − attack errors) ÷ attack attempts"
+              detail={`${teamStats.total_kills} kills · ${teamStats.total_attack_errors} errors · ${teamStats.total_attacks} attempts`} />
             <StatCard label="Kill %" value={teamStats.team_kill_pct ?? '—'}
               unit={teamStats.team_kill_pct == null ? '' : '%'} />
             <StatCard label="Attack attempts" value={teamStats.total_attacks} />
@@ -165,11 +168,15 @@ function Analytics() {
           </div>
           <div style={styles.statRow}>
             <StatCard label="Serve in %" value={teamStats.team_serve_in_pct ?? '—'}
-              unit={teamStats.team_serve_in_pct == null ? '' : '%'} color="#3498db" />
+              unit={teamStats.team_serve_in_pct == null ? '' : '%'} color="#3498db"
+              help="Serves that entered play, including aces. Attempts are inferred automatically from completed rallies."
+              detail={`${teamStats.total_serves - teamStats.total_serve_errors}/${teamStats.total_serves} in`} />
             <StatCard label="Ace %" value={teamStats.team_ace_pct ?? '—'}
               unit={teamStats.team_ace_pct == null ? '' : '%'} color="#2980b9" />
             <StatCard label="Serve efficiency" value={teamStats.team_serve_efficiency ?? '—'}
-              unit={teamStats.team_serve_efficiency == null ? '' : '%'} color="#1abc9c" />
+              unit={teamStats.team_serve_efficiency == null ? '' : '%'} color="#1abc9c"
+              help="(Aces − serve errors) ÷ serve attempts. A negative value is valid when errors exceed aces."
+              detail={`${teamStats.total_aces} aces · ${teamStats.total_serve_errors} errors · ${teamStats.total_serves} attempts`} />
             <StatCard label="Serve errors" value={teamStats.total_serve_errors} color="#e74c3c" />
             <StatCard label="Serve attempts" value={teamStats.total_serves} />
             <StatCard label="Side-out %" value={rotationStats?.sideout_pct ?? '—'}
@@ -179,9 +186,13 @@ function Analytics() {
             <StatCard label="Pass average" value={teamStats.team_pass_average ?? '—'}
               unit={teamStats.team_pass_average == null ? '' : '/3'} color="#1abc9c" />
             <StatCard label="Positive pass %" value={teamStats.team_positive_pass_pct ?? '—'}
-              unit={teamStats.team_positive_pass_pct == null ? '' : '%'} color="#2ecc71" />
+              unit={teamStats.team_positive_pass_pct == null ? '' : '%'} color="#2ecc71"
+              help="Receptions rated 2 or 3"
+              detail={`${teamStats.positive_passes ?? '—'}/${teamStats.team_pass_count} receptions`} />
             <StatCard label="Perfect pass %" value={teamStats.team_perfect_pass_pct ?? '—'}
-              unit={teamStats.team_perfect_pass_pct == null ? '' : '%'} color="#F5C800" />
+              unit={teamStats.team_perfect_pass_pct == null ? '' : '%'} color="#F5C800"
+              help="Receptions rated 3"
+              detail={`${teamStats.perfect_passes ?? '—'}/${teamStats.team_pass_count} receptions`} />
             <StatCard label="Reception error %" value={teamStats.team_reception_error_pct ?? '—'}
               unit={teamStats.team_reception_error_pct == null ? '' : '%'} color="#e74c3c" />
             <StatCard label="Rated receptions" value={teamStats.team_pass_count} />
@@ -522,6 +533,7 @@ const styles = {
   statValue: { fontSize: '24px', fontWeight: '700', lineHeight: 1, marginBottom: '6px' },
   statUnit: { fontSize: '14px', fontWeight: '400', color: '#555' },
   statLabel: { fontSize: '11px', color: '#888' },
+  statDetail: { marginTop: '5px', fontSize: '9px', color: '#666', lineHeight: 1.35 },
   topRow: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' },
   topCard: {
     background: '#1a1a00', border: '1px solid #3a3a00', borderRadius: '10px',

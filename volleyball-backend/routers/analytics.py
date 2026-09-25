@@ -4,9 +4,44 @@ from database import get_db
 from models import (
     MatchEvent, MatchEventContext, Player, Match, SetParticipation, SetScore, Team,
 )
+import json
 from typing import List, Optional
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+RALLY_ENDING_EVENTS = {
+    "kill", "ace", "our_point", "kill_block", "setter_dump",
+    "opponent_point", "serve_error", "foot_fault", "net_touch",
+    "spike_error",
+}
+
+
+def inferred_serves(player_id, db, selected_match_ids=None):
+    query = db.query(MatchEvent, MatchEventContext).join(
+        MatchEventContext, MatchEventContext.event_id == MatchEvent.id
+    ).filter(
+        MatchEventContext.we_were_serving.is_(True),
+        MatchEvent.event_type.in_(RALLY_ENDING_EVENTS),
+        MatchEventContext.state_before_json.isnot(None),
+    )
+    if selected_match_ids is not None:
+        query = query.filter(MatchEvent.match_id.in_(selected_match_ids))
+
+    attempts = aces = errors = 0
+    for event, context in query.all():
+        try:
+            state = json.loads(context.state_before_json)
+            positions = state.get("positions", [])
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if not positions or positions[0] != player_id:
+            continue
+        attempts += 1
+        if event.event_type == "ace":
+            aces += 1
+        elif event.event_type in {"serve_error", "foot_fault"}:
+            errors += 1
+    return attempts, aces, errors
 
 def get_player_stats(player_id: int, db: Session,
                      match_id: Optional[int] = None,
@@ -39,7 +74,8 @@ def get_player_stats(player_id: int, db: Session,
     spikes = sum(1 for e in events if e.event_type == "spike")
     errors = sum(1 for e in events if e.event_type in {"error", "spike_error"})
     aces = sum(1 for e in events if e.event_type == "ace")
-    serve_errors = sum(1 for e in events if e.event_type == "serve_error")
+    serve_errors = sum(1 for e in events if e.event_type in {
+        "serve_error", "foot_fault"})
     blocks = sum(1 for e in events if e.event_type == "block")
     digs = sum(1 for e in events if e.event_type == "dig")
     legacy_assists = sum(1 for e in events if e.event_type == "assist")
@@ -64,7 +100,15 @@ def get_player_stats(player_id: int, db: Session,
     positive_passes = sum(rating >= 2 for rating in pass_ratings)
     reception_errors = sum(rating == 0 for rating in pass_ratings)
     total_attacks = kills + spikes + errors
-    total_serves = aces + serve_errors + serves
+    inferred_attempts, inferred_aces, inferred_errors = inferred_serves(
+        player_id, db, selected_match_ids)
+    if inferred_attempts:
+        total_serves = inferred_attempts
+        aces = inferred_aces
+        serve_errors = inferred_errors
+        serves = inferred_attempts - inferred_aces - inferred_errors
+    else:
+        total_serves = aces + serve_errors + serves
     serve_in = aces + serves
     foot_faults = sum(1 for e in events if e.event_type == "foot_fault")
     net_touches = sum(1 for e in events if e.event_type == "net_touch")
@@ -242,6 +286,9 @@ def team_analytics(team_id: int, last_n: Optional[int] = None,
             total_aces - total_serve_errors, total_serves),
         "team_pass_average": round(pass_total / pass_count, 2) if pass_count else None,
         "team_pass_count": pass_count,
+        "positive_passes": positive_passes,
+        "perfect_passes": perfect_passes,
+        "reception_errors": reception_errors,
         "team_positive_pass_pct": percentage(positive_passes, pass_count),
         "team_perfect_pass_pct": percentage(perfect_passes, pass_count),
         "team_reception_error_pct": percentage(reception_errors, pass_count),

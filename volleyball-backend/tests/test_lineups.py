@@ -404,6 +404,35 @@ def test_reception_and_serve_metrics_use_all_attempts(lineup_data):
     assert stats["serve_efficiency"] == 0.0
 
 
+def test_serve_attempts_are_inferred_from_rallies_without_serve_taps(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    server = players[0]
+    positions = [player.id for player in players[:6]]
+    for event_type, player_id in (
+        ("kill", players[1].id),
+        ("ace", server.id),
+        ("opponent_point", None),
+        ("serve_error", server.id),
+    ):
+        log_event(match.id, MatchEventCreate(
+            match_id=match.id,
+            player_id=player_id,
+            event_type=event_type,
+            set_number=1,
+            rotation_number=1,
+            we_are_serving=True,
+            state_before={"positions": positions},
+        ), db, admin)
+
+    stats = get_player_stats(server.id, db, match_id=match.id)
+
+    assert stats["serve_attempts"] == 4
+    assert stats["serve_in_pct"] == 75.0
+    assert stats["ace_pct"] == 25.0
+    assert stats["serve_error_rate"] == 25.0
+    assert stats["serve_efficiency"] == 0.0
+
+
 def test_score_corrections_do_not_create_player_stats(lineup_data):
     db, admin, match, players, _ = lineup_data
     for event_type in ("our_point", "opponent_point"):

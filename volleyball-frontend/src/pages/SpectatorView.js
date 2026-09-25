@@ -29,6 +29,12 @@ const PASS_LABELS = [
   { label: 'Perfect Pass', emoji: '⭐', color: '#27ae60' },
 ];
 
+const POSITION_COLORS = {
+  Setter: '#8e44ad', Opposite: '#e67e22',
+  'Middle Blocker': '#c0392b', 'Outside Hitter': '#2980b9',
+  Libero: '#d4ac0d',
+};
+
 function SpectatorView() {
   const { matchId } = useParams();
   const [score, setScore] = useState(null);
@@ -39,6 +45,7 @@ function SpectatorView() {
   const [substitutions, setSubstitutions] = useState([]);
   const [spectatorCount, setSpectatorCount] = useState(null);
   const [error, setError] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const fetchAll = async () => {
     try {
@@ -53,6 +60,8 @@ function SpectatorView() {
       setPlayers(Object.fromEntries(snapshot.events
         .filter(event => event.player_id && event.player_name)
         .map(event => [event.player_id, event.player_name])));
+      setLastUpdated(new Date());
+      setError(false);
     } catch {
       setError(true);
     }
@@ -117,10 +126,19 @@ function SpectatorView() {
     ? score.away_team_name : score.home_team_name;
   const setsWon = (score.sets||[]).filter(s => s.us > s.them).length;
   const setsLost = (score.sets||[]).filter(s => s.them > s.us).length;
+  const servingName = tracker?.we_are_serving ? ourName : opponentName;
+  const shareMatch = async () => {
+    if (navigator.share) {
+      await navigator.share({ title: `${ourName} vs ${opponentName}`, url: window.location.href });
+    } else {
+      await navigator.clipboard.writeText(window.location.href);
+      alert('Spectator link copied.');
+    }
+  };
 
   return (
     <div style={styles.page}>
-      <Header spectatorCount={spectatorCount} />
+      <Header spectatorCount={spectatorCount} onShare={shareMatch} />
 
       {/* Score */}
       <div style={styles.card}>
@@ -131,6 +149,10 @@ function SpectatorView() {
           <span style={styles.setInfo}>Set {score.current_set}</span>
           {tracker && <span style={styles.setInfo}>Rotation {tracker.rotation_number}</span>}
         </div>
+
+        {tracker && score.status === 'live' && (
+          <div style={styles.servingBanner}>🏐 {servingName} serving</div>
+        )}
 
         <div style={styles.scoreRow}>
           <div style={styles.team}>
@@ -156,7 +178,11 @@ function SpectatorView() {
             ))}
           </div>
         )}
-        <div style={styles.refreshNote}>Updates every 5 seconds</div>
+        <div style={styles.refreshNote}>
+          {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('en-GB', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+          })}` : 'Connecting…'} · refreshes every 5 seconds
+        </div>
       </div>
 
       {/* Court diagram */}
@@ -172,7 +198,10 @@ function SpectatorView() {
               {[3,2,1].map(i => {
                 const p = lineup.on_court[i];
                 return (
-                  <div key={i} style={styles.courtSlot}>
+                  <div key={i} style={{
+                    ...styles.courtSlot,
+                    borderTop: `4px solid ${POSITION_COLORS[p?.position] || '#444'}`,
+                  }}>
                     <div style={styles.courtPosTag}>P{i+1}</div>
                     {p ? (
                       <>
@@ -198,6 +227,7 @@ function SpectatorView() {
                 return (
                   <div key={i} style={{
                     ...styles.courtSlot,
+                    borderTop: `4px solid ${POSITION_COLORS[p?.position] || '#444'}`,
                     ...(isServer ? styles.courtSlotServer : {}),
                   }}>
                     <div style={styles.courtPosTag}>P{i===0?1:i+1}</div>
@@ -329,7 +359,7 @@ function SpectatorView() {
   );
 }
 
-function Header({ spectatorCount }) {
+function Header({ spectatorCount, onShare }) {
   return (
     <div style={styles.header}>
       <span style={styles.headerLeft}>👁👁 Spectating</span>
@@ -338,6 +368,7 @@ function Header({ spectatorCount }) {
           👥 {spectatorCount} watching
         </span>
       )}
+      {onShare && <button style={styles.shareBtn} onClick={onShare}>Share</button>}
     </div>
   );
 }
@@ -349,7 +380,7 @@ const styles = {
     alignItems: 'center', padding: '0 16px 32px', gap: '14px',
   },
   header: {
-    width: '100%', maxWidth: '520px',
+    width: '100%', maxWidth: '760px',
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '14px 0',
   },
@@ -358,11 +389,12 @@ const styles = {
     fontSize: '12px', color: '#bbb', background: '#1a1a1a',
     border: '1px solid #2a2a2a', borderRadius: '999px', padding: '6px 10px',
   },
+  shareBtn: { padding: '6px 11px', color: '#111', background: '#F5C800', border: 'none', borderRadius: '999px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' },
 
   card: {
     background: '#1a1a1a', border: '1px solid #2a2a2a',
     borderRadius: '16px', padding: '28px 20px',
-    width: '100%', maxWidth: '520px', textAlign: 'center',
+    width: '100%', maxWidth: '760px', textAlign: 'center',
   },
   liveRow: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -371,6 +403,7 @@ const styles = {
   liveDot: { color: '#ff6b6b', fontWeight: '700', fontSize: '14px' },
   statusTag: { color: '#888', fontSize: '13px', textTransform: 'uppercase' },
   setInfo: { color: '#888', fontSize: '13px' },
+  servingBanner: { display: 'inline-block', marginBottom: '16px', padding: '7px 14px', color: '#9affbd', background: '#123520', border: '1px solid #286643', borderRadius: '999px', fontSize: '12px', fontWeight: '800' },
   scoreRow: {
     display: 'flex', alignItems: 'center',
     justifyContent: 'center', gap: '16px', marginBottom: '20px',
@@ -402,7 +435,7 @@ const styles = {
   feedCard: {
     background: '#1a1a1a', border: '1px solid #2a2a2a',
     borderRadius: '16px', padding: '18px',
-    width: '100%', maxWidth: '520px',
+    width: '100%', maxWidth: '760px',
   },
   feedTitle: {
     fontSize: '11px', fontWeight: '600', color: '#F5C800',
