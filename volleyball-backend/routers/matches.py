@@ -376,6 +376,13 @@ def set_lineup(match_id: int, data: MatchLineupUpdate,
         raise HTTPException(status_code=400,
             detail=f"Players do not belong to the tracking team: {invalid_ids}")
 
+    front_row_ids = data.on_court[1:4]
+    front_row_libero = db.query(Player).filter(
+        Player.id.in_(front_row_ids), Player.position == "Libero").first()
+    if front_row_libero:
+        raise HTTPException(status_code=400,
+            detail="A libero cannot be placed in a front-row position")
+
     # clear existing lineup
     db.query(MatchLineup).filter(
         MatchLineup.match_id == match_id).delete()
@@ -420,6 +427,13 @@ def save_tracker_state(match_id: int, data: MatchTrackerStateUpdate,
             detail="Tracker state requires six unique court positions")
     if data.rotation_number not in range(1, 7):
         raise HTTPException(status_code=400, detail="Rotation must be between 1 and 6")
+    front_row_libero = db.query(Player).filter(
+        Player.id.in_(data.positions[1:4]),
+        Player.position == "Libero",
+    ).first()
+    if front_row_libero:
+        raise HTTPException(status_code=400,
+            detail="A libero cannot be placed in a front-row position")
     all_ids = data.positions + data.bench
     valid_count = db.query(Player).filter(
         Player.id.in_(all_ids), Player.team_id == match.our_team_id).count()

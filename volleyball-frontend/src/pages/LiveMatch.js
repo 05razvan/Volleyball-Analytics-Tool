@@ -126,6 +126,7 @@ function LiveMatch() {
   const [showLiberoPrompt, setShowLiberoPrompt] = useState(false);
   const [pendingMiddle, setPendingMiddle] = useState(null);
   const [pendingMiddlePosIndex, setPendingMiddlePosIndex] = useState(null);
+  const [liberoPromptReason, setLiberoPromptReason] = useState('rotation');
 
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [weAreServing, setWeAreServing] = useState(false);
@@ -174,6 +175,11 @@ function LiveMatch() {
             const byId = new Map(players.map(player => [player.id, player]));
             const restoredPositions = saved.positions.map(id => byId.get(id)).filter(Boolean);
             if (restoredPositions.length !== 6) return;
+            const hasUntrackedLibero = restoredPositions.some(player =>
+              player.position === 'Libero') && !saved.active_libero_swap;
+            const hasFrontRowLibero = restoredPositions
+              .slice(1, 4).some(player => player.position === 'Libero');
+            if (hasUntrackedLibero || hasFrontRowLibero) return;
             setPositions(restoredPositions);
             setBench(saved.bench.map(id => byId.get(id)).filter(Boolean));
             setWeAreServing(saved.we_are_serving);
@@ -216,6 +222,10 @@ function LiveMatch() {
     });
 
   const assignToPosition = (player, posIndex) => {
+    if (player.position === 'Libero') {
+      alert('Choose six regular rotation players here. You will select the libero immediately before tracking starts.');
+      return;
+    }
     const newPositions = positions.map(p => p?.id === player.id ? null : p);
     const displaced = newPositions[posIndex];
     newPositions[posIndex] = player;
@@ -238,6 +248,10 @@ function LiveMatch() {
       alert(`Fill all 6 positions. Currently ${positions.filter(Boolean).length}/6.`);
       return;
     }
+    if (positions.some(player => player?.position === 'Libero')) {
+      alert('Remove the libero from the starting rotation. You will select them immediately before tracking starts.');
+      return;
+    }
     setPhase('serve_select');
   };
 
@@ -253,6 +267,13 @@ function LiveMatch() {
       });
       await saveTrackerState(positions, bench, weServe, rotationNumber);
       setPhase('tracking');
+      const backRowMiddleIndex = [0, 4, 5].find(index =>
+        isMiddle(positions[index]));
+      if (backRowMiddleIndex !== undefined && liberos.length > 0) {
+        triggerLiberoPrompt(
+          positions[backRowMiddleIndex], backRowMiddleIndex, 'start',
+        );
+      }
     } catch (error) {
       setActionError(`Could not save the lineup: ${error.message}`);
     } finally {
@@ -262,13 +283,14 @@ function LiveMatch() {
 
   const isMiddle = (player) => player?.position === 'Middle Blocker';
 
-  // Check if libero has reached P4 (index 3) and should swap out
+  // Check if a libero has reached any front-row position and swap the middle
+  // back in. This is deliberately defensive so manual rotation corrections can
+  // never leave a libero in P2, P3 or P4.
   // Called after every rotation with the NEW positions array
   const checkLiberoSwapOut = (newPositions, swap) => {
     if (!swap) return { positions: newPositions };
     const libInPos = newPositions.findIndex(p => p?.id === swap.libero.id);
-    if (libInPos === 3) {
-      // Libero reached P4 (front row) — swap middle back in silently
+    if ([1, 2, 3].includes(libInPos)) {
       const updated = [...newPositions];
       updated[libInPos] = swap.middle;
       return {
@@ -281,10 +303,11 @@ function LiveMatch() {
     return { positions: newPositions };
   };
 
-  const triggerLiberoPrompt = (middle, posIndex) => {
+  const triggerLiberoPrompt = (middle, posIndex, reason = 'rotation') => {
     if (liberos.length === 0) return;
     setPendingMiddle(middle);
     setPendingMiddlePosIndex(posIndex);
+    setLiberoPromptReason(reason);
     setShowLiberoPrompt(true);
   };
 
@@ -309,12 +332,13 @@ function LiveMatch() {
       rotationNumber, passingEnabled, swap);
   };
 
-  // Rotate and check libero swap out — returns new state values
-  const doRotation = (currentPositions, currentBench, currentSwap) => {
-    const rotated = rotateClockwise(currentPositions);
+  // Resolve a rotation, automatically moving the chosen libero from the middle
+  // entering the front row to the other middle entering the back row.
+  const resolveLiberoRotation = (rotated, currentBench, currentSwap) => {
     const { positions: final, clearedSwap, returnedMiddle, returnedLibero } =
       checkLiberoSwapOut(rotated, currentSwap);
 
+    let newPositions = final;
     let newBench = currentBench;
     let newSwap = currentSwap;
 
@@ -324,9 +348,33 @@ function LiveMatch() {
         ...currentBench.filter(p => p.id !== returnedMiddle.id),
         returnedLibero,
       ].sort((a,b) => a.name.localeCompare(b.name));
+
+      const nextMiddleIndex = [0, 4, 5].find(index =>
+        isMiddle(newPositions[index]));
+      if (nextMiddleIndex !== undefined) {
+        const nextMiddle = newPositions[nextMiddleIndex];
+        newPositions = [...newPositions];
+        newPositions[nextMiddleIndex] = returnedLibero;
+        newBench = [
+          ...newBench.filter(player => player.id !== returnedLibero.id),
+          nextMiddle,
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        newSwap = {
+          posIndex: nextMiddleIndex,
+          middle: nextMiddle,
+          libero: returnedLibero,
+        };
+      }
     }
 
-    return { positions: final, bench: newBench, swap: newSwap };
+    return { positions: newPositions, bench: newBench, swap: newSwap };
+  };
+
+  // Rotate and check libero swap out — returns new state values
+  const doRotation = (currentPositions, currentBench, currentSwap) => {
+    return resolveLiberoRotation(
+      rotateClockwise(currentPositions), currentBench, currentSwap,
+    );
   };
 
   const serverPlayer = positions[0];
@@ -466,24 +514,33 @@ function LiveMatch() {
     if (eventSaving) return;
     const previousPositions = positions;
     const previousRotation = rotationNumber;
-    const nextPositions = direction === 'forward'
+    const rotatedPositions = direction === 'forward'
       ? rotateClockwise(positions)
       : rotateCounterClockwise(positions);
+    const resolved = resolveLiberoRotation(
+      rotatedPositions, bench, activeLiberoSwap,
+    );
+    const nextPositions = resolved.positions;
     const nextRotation = direction === 'forward'
       ? (rotationNumber === 6 ? 1 : rotationNumber + 1)
       : (rotationNumber === 1 ? 6 : rotationNumber - 1);
     setPositions(nextPositions);
+    setBench(resolved.bench);
+    setActiveLiberoSwap(resolved.swap);
     setRotationNumber(nextRotation);
     setSelectedPlayer(null);
     setActionError('');
     try {
       await apiSaveLineup(matchId, {
         on_court: nextPositions.map(player => player.id),
-        bench: bench.map(player => player.id),
+        bench: resolved.bench.map(player => player.id),
       });
-      await saveTrackerState(nextPositions, bench, weAreServing, nextRotation);
+      await saveTrackerState(nextPositions, resolved.bench, weAreServing,
+        nextRotation, passingEnabled, resolved.swap);
     } catch (error) {
       setPositions(previousPositions);
+      setBench(bench);
+      setActiveLiberoSwap(activeLiberoSwap);
       setRotationNumber(previousRotation);
       setActionError(`Could not correct rotation: ${error.message}`);
     }
@@ -565,12 +622,32 @@ function LiveMatch() {
     if (!subTarget) return;
     const posIndex = positions.findIndex(p => p?.id === subTarget.id);
     if (posIndex === -1) return;
+    if (benchPlayer.position === 'Libero' && [1, 2, 3].includes(posIndex)) {
+      alert('A libero cannot substitute into the front row (P2, P3 or P4).');
+      return;
+    }
+    if (benchPlayer.position === 'Libero' && !isMiddle(subTarget)) {
+      alert('A libero can only replace a back-row middle in the tracker.');
+      return;
+    }
+    if (activeLiberoSwap?.libero.id === subTarget.id
+        && benchPlayer.id !== activeLiberoSwap.middle.id) {
+      alert(`The libero can only be replaced by ${activeLiberoSwap.middle.name}.`);
+      return;
+    }
     const newPositions = [...positions];
     newPositions[posIndex] = benchPlayer;
     const newBench = [...bench.filter(p => p.id !== benchPlayer.id), subTarget]
       .sort((a,b) => a.name.localeCompare(b.name));
+    let newSwap = activeLiberoSwap;
+    if (benchPlayer.position === 'Libero' && isMiddle(subTarget)) {
+      newSwap = { posIndex, middle: subTarget, libero: benchPlayer };
+    } else if (activeLiberoSwap?.libero.id === subTarget.id) {
+      newSwap = null;
+    }
     setPositions(newPositions);
     setBench(newBench);
+    setActiveLiberoSwap(newSwap);
     setSubMode(false);
     setSubTarget(null);
     await apiLogSubstitution(matchId, {
@@ -583,7 +660,8 @@ function LiveMatch() {
       on_court: newPositions.filter(Boolean).map(p => p.id),
       bench: newBench.map(p => p.id),
     });
-    await saveTrackerState(newPositions, newBench, weAreServing, rotationNumber);
+    await saveTrackerState(newPositions, newBench, weAreServing,
+      rotationNumber, passingEnabled, newSwap);
   };
 
   const cancelSub = () => { setSubMode(false); setSubTarget(null); };
@@ -840,7 +918,11 @@ function LiveMatch() {
       <div style={s.promptCard}>
         <div style={s.promptTitle}>Libero swap</div>
         <div style={s.promptSub}>
-          <strong>{pendingMiddle?.name}</strong> serve error from P1. Which libero comes in?
+          {liberoPromptReason === 'start' ? (
+            <>The back-row middle is <strong>{pendingMiddle?.name}</strong>. Which libero replaces them before the first point?</>
+          ) : (
+            <><strong>{pendingMiddle?.name}</strong> is leaving the service position. Which libero comes in?</>
+          )}
         </div>
         <div style={s.promptBtns}>
           {liberos.map(lib => (

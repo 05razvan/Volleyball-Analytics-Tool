@@ -242,6 +242,34 @@ def test_rejects_player_from_another_team(lineup_data):
     assert exc.value.status_code == 400
 
 
+def test_rejects_libero_in_front_row_lineup_and_tracker_state(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    players[1].position = "Libero"
+    db.commit()
+    ids = [player.id for player in players]
+
+    with pytest.raises(HTTPException, match="libero cannot") as lineup_error:
+        set_lineup(
+            match.id,
+            MatchLineupUpdate(on_court=ids[:6], bench=ids[6:]),
+            db,
+            admin,
+        )
+    assert lineup_error.value.status_code == 400
+
+    with pytest.raises(HTTPException, match="libero cannot") as state_error:
+        save_tracker_state(
+            match.id,
+            MatchTrackerStateUpdate(
+                positions=ids[:6], bench=ids[6:],
+                we_are_serving=False, rotation_number=1,
+            ),
+            db,
+            admin,
+        )
+    assert state_error.value.status_code == 400
+
+
 def test_join_request_routes_are_registered():
     from main import app
 
