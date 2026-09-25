@@ -192,6 +192,7 @@ function LiveMatch() {
               const libero = byId.get(swap.libero_id);
               if (middle && libero) setActiveLiberoSwap({
                 posIndex: swap.posIndex, middle, libero,
+                waitingToEnter: Boolean(swap.waiting_to_enter),
               });
             }
             setPhase('tracking');
@@ -218,6 +219,7 @@ function LiveMatch() {
         posIndex: swap.posIndex,
         middle_id: swap.middle.id,
         libero_id: swap.libero.id,
+        waiting_to_enter: Boolean(swap.waitingToEnter),
       } : null,
     });
 
@@ -289,6 +291,7 @@ function LiveMatch() {
   // Called after every rotation with the NEW positions array
   const checkLiberoSwapOut = (newPositions, swap) => {
     if (!swap) return { positions: newPositions };
+    if (swap.waitingToEnter) return { positions: newPositions };
     const libInPos = newPositions.findIndex(p => p?.id === swap.libero.id);
     if ([1, 2, 3].includes(libInPos)) {
       const updated = [...newPositions];
@@ -312,6 +315,23 @@ function LiveMatch() {
   };
 
   const handleLiberoChoice = async (libero) => {
+    const shouldWaitForServe = liberoPromptReason === 'start'
+      && weAreServing && pendingMiddlePosIndex === 0;
+    if (shouldWaitForServe) {
+      const waitingSwap = {
+        posIndex: pendingMiddlePosIndex,
+        middle: pendingMiddle,
+        libero,
+        waitingToEnter: true,
+      };
+      setActiveLiberoSwap(waitingSwap);
+      setShowLiberoPrompt(false);
+      setPendingMiddle(null);
+      setPendingMiddlePosIndex(null);
+      await saveTrackerState(positions, bench, weAreServing,
+        rotationNumber, passingEnabled, waitingSwap);
+      return;
+    }
     const newPositions = [...positions];
     newPositions[pendingMiddlePosIndex] = libero;
     const newBench = [...bench.filter(p => p.id !== libero.id), pendingMiddle]
@@ -375,6 +395,43 @@ function LiveMatch() {
     return resolveLiberoRotation(
       rotateClockwise(currentPositions), currentBench, currentSwap,
     );
+  };
+
+  const enterWaitingLibero = (currentPositions, currentBench, currentSwap) => {
+    if (!currentSwap?.waitingToEnter) {
+      return {
+        positions: currentPositions,
+        bench: currentBench,
+        swap: currentSwap,
+        changed: false,
+      };
+    }
+    const middleIndex = currentPositions.findIndex(player =>
+      player?.id === currentSwap.middle.id);
+    if (![0, 4, 5].includes(middleIndex)) {
+      return {
+        positions: currentPositions,
+        bench: currentBench,
+        swap: null,
+        changed: false,
+      };
+    }
+    const newPositions = [...currentPositions];
+    newPositions[middleIndex] = currentSwap.libero;
+    const newBench = [
+      ...currentBench.filter(player => player.id !== currentSwap.libero.id),
+      currentSwap.middle,
+    ].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      positions: newPositions,
+      bench: newBench,
+      swap: {
+        posIndex: middleIndex,
+        middle: currentSwap.middle,
+        libero: currentSwap.libero,
+      },
+      changed: true,
+    };
   };
 
   const serverPlayer = positions[0];
@@ -444,6 +501,7 @@ function LiveMatch() {
           posIndex: activeLiberoSwap.posIndex,
           middle_id: activeLiberoSwap.middle.id,
           libero_id: activeLiberoSwap.libero.id,
+          waiting_to_enter: Boolean(activeLiberoSwap.waitingToEnter),
         } : null,
       },
     };
@@ -475,8 +533,19 @@ function LiveMatch() {
     }
 
     if (eventType === 'opponent_point') {
+      const entry = enterWaitingLibero(positions, bench, activeLiberoSwap);
+      setPositions(entry.positions);
+      setBench(entry.bench);
+      setActiveLiberoSwap(entry.swap);
       setWeAreServing(false);
-      await saveTrackerState(positions, bench, false, rotationNumber);
+      if (entry.changed) {
+        await apiSaveLineup(matchId, {
+          on_court: entry.positions.map(player => player.id),
+          bench: entry.bench.map(player => player.id),
+        });
+      }
+      await saveTrackerState(entry.positions, entry.bench, false,
+        rotationNumber, passingEnabled, entry.swap);
       return;
     }
 
@@ -500,12 +569,24 @@ function LiveMatch() {
     }
 
     if (['serve_error', 'foot_fault', 'net_touch', 'spike_error'].includes(eventType)) {
+      const entry = enterWaitingLibero(positions, bench, activeLiberoSwap);
       if (eventType === 'serve_error' && eventPlayer &&
-          isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id) {
+          isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id
+          && !activeLiberoSwap?.waitingToEnter) {
         triggerLiberoPrompt(eventPlayer, 0);
       }
+      setPositions(entry.positions);
+      setBench(entry.bench);
+      setActiveLiberoSwap(entry.swap);
       setWeAreServing(false);
-      await saveTrackerState(positions, bench, false, rotationNumber);
+      if (entry.changed) {
+        await apiSaveLineup(matchId, {
+          on_court: entry.positions.map(player => player.id),
+          bench: entry.bench.map(player => player.id),
+        });
+      }
+      await saveTrackerState(entry.positions, entry.bench, false,
+        rotationNumber, passingEnabled, entry.swap);
       return;
     }   
   };
@@ -564,6 +645,7 @@ function LiveMatch() {
           posIndex: restoredSwap.posIndex,
           middle: byId.get(restoredSwap.middle_id),
           libero: byId.get(restoredSwap.libero_id),
+          waitingToEnter: Boolean(restoredSwap.waiting_to_enter),
         } : null,
       };
     }
@@ -973,6 +1055,11 @@ function LiveMatch() {
             <div style={{ fontSize: '10px', color: weAreServing ? '#2ecc71' : '#e74c3c', fontWeight: '600' }}>
               {weAreServing ? '● OUR SERVE' : '● THEIR SERVE'}
             </div>
+            {activeLiberoSwap?.waitingToEnter && (
+              <div style={{ fontSize: '9px', color: '#F5C800', fontWeight: '700' }}>
+                {activeLiberoSwap.libero.name} enters after side-out
+              </div>
+            )}
             <div style={m.ptRow}>
               <button style={m.ptUs} onClick={() => handleEvent('our_point')}>+Us</button>
               <button style={m.ptThem} onClick={() => handleEvent('opponent_point')}>+Them</button>
@@ -1262,6 +1349,11 @@ function LiveMatch() {
               ? <span style={s.servingUs}>● We are serving</span>
               : <span style={s.servingThem}>● They are serving</span>}
           </div>
+          {activeLiberoSwap?.waitingToEnter && (
+            <div style={s.liberoWaitingTag}>
+              {activeLiberoSwap.libero.name} enters when this serving run ends
+            </div>
+          )}
           {(score.sets||[]).map(st => (
             <div key={st.set} style={s.setPill}>S{st.set}: {st.us}–{st.them}</div>
           ))}
@@ -1624,6 +1716,7 @@ const s = {
   setLabel: { fontSize: '13px', fontWeight: '600', color: '#ccc' },
   servingUs: { fontSize: '10px', color: '#2ecc71', fontWeight: '600' },
   servingThem: { fontSize: '10px', color: '#e74c3c', fontWeight: '600' },
+  liberoWaitingTag: { fontSize: '9px', color: '#F5C800', fontWeight: '700', background: '#332b00', padding: '3px 7px', borderRadius: '6px' },
   setPill: { fontSize: '10px', background: '#2a2a4a', padding: '2px 6px', borderRadius: '8px', color: '#aaa' },
   ourBtn: { padding: '8px 14px', background: '#1f7a49', color: 'white', border: '1px solid #32a867', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
   opponentBtn: { padding: '8px 14px', background: '#a52b22', color: 'white', border: '1px solid #d54a3e', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' },
