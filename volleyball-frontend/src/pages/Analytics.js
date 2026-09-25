@@ -159,8 +159,7 @@ function Analytics() {
               unit={teamStats.team_attack_efficiency == null ? '' : '%'}
               help="(Kills − attack errors) ÷ attack attempts"
               detail={`${teamStats.total_kills} kills · ${teamStats.total_attack_errors} errors · ${teamStats.total_attacks} attempts`} />
-            <StatCard label="Kill %" value={teamStats.team_kill_pct ?? '—'}
-              unit={teamStats.team_kill_pct == null ? '' : '%'} />
+            <StatCard label="Total kills" value={teamStats.total_kills} color="#2ecc71" />
             <StatCard label="Attack attempts" value={teamStats.total_attacks} />
             <StatCard label="Attack errors" value={teamStats.total_attack_errors} color="#e74c3c" />
             <StatCard label="Block points" value={teamStats.total_block_points} color="#9b59b6" />
@@ -214,7 +213,7 @@ function Analytics() {
                         <div style={styles.comparisonRows}>
                           <div style={styles.comparisonRow}><span>Record</span><strong>{stats.wins}–{stats.losses}</strong></div>
                           <div style={styles.comparisonRow}><span>Win rate</span><strong>{stats.win_pct}%</strong></div>
-                          <div style={styles.comparisonRow}><span>Kill %</span><strong>{stats.kill_pct ?? '—'}{stats.kill_pct == null ? '' : '%'}</strong></div>
+                          <div style={styles.comparisonRow}><span>Kill rate</span><strong>{stats.kill_pct ?? '—'}{stats.kill_pct == null ? '' : '%'}</strong></div>
                           <div style={styles.comparisonRow}><span>Serve error</span><strong>{stats.serve_error_rate ?? '—'}{stats.serve_error_rate == null ? '' : '%'}</strong></div>
                           <div style={styles.comparisonRow}><span>Side-out</span><strong>{stats.sideout_pct ?? '—'}{stats.sideout_pct == null ? '' : '%'}</strong></div>
                           <div style={styles.comparisonRow}><span>Matches</span><strong>{stats.matches}</strong></div>
@@ -264,7 +263,7 @@ function Analytics() {
                 <TopPerformerBadge label="Most block points" name={topPerformers.most_blocks?.name} value={topPerformers.most_blocks?.value} />
                 <TopPerformerBadge label="Most digs" name={topPerformers.most_digs?.name} value={topPerformers.most_digs?.value} />
                 <TopPerformerBadge label="Most aces" name={topPerformers.most_aces?.name} value={topPerformers.most_aces?.value} />
-                <TopPerformerBadge label="Best kill %" name={topPerformers.highest_kill_pct?.name} value={topPerformers.highest_kill_pct?.value} unit="%" />
+                <TopPerformerBadge label="Best kill rate" name={topPerformers.highest_kill_pct?.name} value={topPerformers.highest_kill_pct?.value} unit="%" />
               </div>
             </>
           )}
@@ -274,7 +273,7 @@ function Analytics() {
               <h3 style={styles.sectionTitle}>Trends</h3>
               <div style={mobile ? styles.chartColStack : styles.chartRow}>
                 <div style={styles.chartCard}>
-                  <div style={styles.chartTitle}>Kill % per match</div>
+                  <div style={styles.chartTitle}>Kill rate per match</div>
                   <ResponsiveContainer width="100%" height={chartH}>
                     <LineChart data={trend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
@@ -283,7 +282,7 @@ function Analytics() {
                       <Tooltip content={<CustomTooltip />} />
                       <Line type="monotone" dataKey="kill_pct"
                         stroke="#F5C800" strokeWidth={2}
-                        dot={{ r: 3, fill: '#F5C800' }} name="Kill %" unit="%" />
+                        dot={{ r: 3, fill: '#F5C800' }} name="Kill rate" unit="%" />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -356,7 +355,7 @@ function Analytics() {
                 )}>
                 <div style={styles.playerBtnName}>{p.name}</div>
                 <div style={styles.playerBtnPos}>{p.position ?? 'Rec'}</div>
-                <div style={styles.playerBtnStat}>{p.kill_pct ?? '—'}{p.kill_pct == null ? '' : '%'} kill</div>
+                <div style={styles.playerBtnStat}>{p.kill_pct ?? '—'}{p.kill_pct == null ? '' : '%'} kill rate</div>
               </button>
             ))}
           </div>
@@ -367,8 +366,9 @@ function Analytics() {
               <div style={styles.statRow}>
                 <StatCard label="Attack efficiency" value={playerStats.attack_efficiency ?? '—'}
                   unit={playerStats.attack_efficiency == null ? '' : '%'} />
-                <StatCard label="Kill %" value={playerStats.kill_pct ?? '—'}
-                  unit={playerStats.kill_pct == null ? '' : '%'} />
+                <StatCard label="Kill rate" value={playerStats.kill_pct ?? '—'}
+                  unit={playerStats.kill_pct == null ? '' : '%'}
+                  help="Kills ÷ attack attempts. Unlike attack efficiency, this does not subtract attack errors." />
                 <StatCard label="Attack attempts" value={playerStats.total_attacks} />
                 <StatCard label="Attack errors" value={playerStats.attack_errors} color="#e74c3c" />
                 <StatCard label="Setter dumps" value={playerStats.setter_dumps} color="#8e44ad" />
@@ -418,7 +418,7 @@ function Analytics() {
                 <>
                   <h3 style={styles.sectionTitle}>Performance over time</h3>
                   <div style={styles.chartCard}>
-                    <div style={styles.chartTitle}>Kill % over time</div>
+                    <div style={styles.chartTitle}>Kill rate over time</div>
                     <ResponsiveContainer width="100%" height={chartH}>
                       <LineChart data={[...playerHistory].reverse()}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
@@ -427,7 +427,7 @@ function Analytics() {
                         <Tooltip content={<CustomTooltip />} />
                         <Line type="monotone" dataKey="kill_pct"
                           stroke="#F5C800" strokeWidth={2}
-                          dot={{ r: 3, fill: '#F5C800' }} name="Kill %" unit="%" />
+                          dot={{ r: 3, fill: '#F5C800' }} name="Kill rate" unit="%" />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -473,7 +473,7 @@ function Analytics() {
                       <span>A</span>
                       <span>B</span>
                       <span>D</span>
-                      <span>K%</span>
+                      <span>Kill rate</span>
                     </div>
                     {playerHistory.map(h => (
                       <div key={h.match_id}
