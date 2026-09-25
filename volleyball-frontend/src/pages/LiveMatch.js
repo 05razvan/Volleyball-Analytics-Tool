@@ -108,6 +108,10 @@ function LiveMatch() {
   const { matchId } = useParams();
   const navigate = useNavigate();
   const [mobile, setMobile] = useState(window.innerWidth <= 700);
+  const [tabletLandscape, setTabletLandscape] = useState(
+    window.innerWidth > 700 && window.innerWidth <= 1400
+      && window.innerWidth > window.innerHeight
+  );
 
   const [phase, setPhase] = useState('lineup');
   const [allPlayers, setAllPlayers] = useState([]);
@@ -140,7 +144,11 @@ function LiveMatch() {
   const [pendingAssist, setPendingAssist] = useState(null);
 
   useEffect(() => {
-    const handleResize = () => setMobile(window.innerWidth <= 700);
+    const handleResize = () => {
+      setMobile(window.innerWidth <= 700);
+      setTabletLandscape(window.innerWidth > 700 && window.innerWidth <= 1400
+        && window.innerWidth > window.innerHeight);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -1215,7 +1223,62 @@ function LiveMatch() {
         </div>
       )}
 
-      <div style={s.body}>
+      <div style={{
+        ...s.body,
+        ...(tabletLandscape ? s.tabletBody : {}),
+      }}>
+        {tabletLandscape ? (
+          <div style={s.tabletPlayerArea}>
+            <div style={s.tabletPlayerStrip}>
+              {orderedOnCourt.map(({ player, courtIndex }) => {
+                const isServer = courtIndex === 0;
+                const isFrontRow = [1, 2, 3].includes(courtIndex);
+                const roleColor = POSITION_COLORS[player.position] ?? '#666';
+                const darkText = player.position === 'Libero';
+                const selected = selectedPlayer?.id === player.id;
+                return (
+                  <div key={player.id} style={s.tabletPlayerSlot}>
+                    <button style={{
+                      ...s.tabletPlayerBtn,
+                      background: roleColor,
+                      color: darkText ? '#111' : '#fff',
+                      border: selected ? '5px solid #fff' : `3px solid ${roleColor}`,
+                      boxShadow: selected
+                        ? `0 0 0 4px #F5C800, 0 5px 15px ${roleColor}88`
+                        : '0 3px 9px rgba(0,0,0,0.4)',
+                      transform: selected ? 'translateY(-3px)' : 'none',
+                    }} onClick={() => {
+                      if (subMode) handleSubOut(player);
+                      else setSelectedPlayer(player);
+                    }}>
+                      <span style={s.tabletRole}>{player.position ?? 'Player'}</span>
+                      <span style={s.tabletPlayerName}>{player.name}</span>
+                      <span style={s.tabletPlayerMeta}>
+                        {player.jersey_number ? `#${player.jersey_number} · ` : ''}
+                        P{courtIndex === 0 ? 1 : courtIndex + 1} · {isFrontRow ? 'FRONT' : 'BACK'}
+                      </span>
+                      {selected && <span style={s.tabletSelectedTag}>SELECTED</span>}
+                      {isServer && weAreServing && <span style={s.tabletServerTag}>🏐 SERVER</span>}
+                    </button>
+                    <button style={s.tabletSubBtn} onClick={() => handleSubOut(player)}>⇄ SUB</button>
+                  </div>
+                );
+              })}
+            </div>
+            {subMode && (
+              <div style={s.tabletBenchStrip}>
+                <strong>Sub in for {subTarget?.name}:</strong>
+                {bench.map(player => (
+                  <button key={player.id} style={s.tabletBenchBtn}
+                    onClick={() => handleSubIn(player)}>
+                    {player.name}{player.jersey_number ? ` #${player.jersey_number}` : ''}
+                  </button>
+                ))}
+                <button style={s.subCancelBtn} onClick={cancelSub}>Cancel</button>
+              </div>
+            )}
+          </div>
+        ) : (
         <div style={s.playerPanel}>
           <div style={s.rotationMini}>
             <div style={s.rotNetLine2} />
@@ -1256,7 +1319,8 @@ function LiveMatch() {
                 <button
                   style={{
                     ...s.playerBtn,
-                    background: `${roleColor}22`,
+                    background: roleColor,
+                    color: player.position === 'Libero' ? '#111' : '#fff',
                     ...(selectedPlayer?.id===player.id ? s.playerBtnActive : {}),
                     ...(subMode ? s.playerBtnSubOut : {}),
                     ...(isServer&&weAreServing ? s.playerBtnServer : {}),
@@ -1264,10 +1328,10 @@ function LiveMatch() {
                   }}
                   onClick={() => {
                     if (subMode) handleSubOut(player);
-                    else setSelectedPlayer(selectedPlayer?.id===player.id ? null : player);
+                    else setSelectedPlayer(player);
                   }}>
                   <div style={s.playerBtnTop}>
-                    <span style={{ ...s.posTag, color: roleColor }}>{player.position ?? 'Player'}</span>
+                    <span style={{ ...s.posTag, color: '#fff' }}>{player.position ?? 'Player'}</span>
                     <span style={s.courtStateTag}>
                       P{courtIndex===0?1:courtIndex+1} · {isFrontRow ? 'FRONT' : 'BACK'}
                     </span>
@@ -1311,15 +1375,19 @@ function LiveMatch() {
             </>
           )}
         </div>
+        )}
 
-        <div style={s.eventPanel}>
+        <div style={{
+          ...s.eventPanel,
+          ...(tabletLandscape ? s.tabletEventPanel : {}),
+        }}>
           <div style={{
             ...s.panelTitle,
             ...(selectedPlayer ? s.panelTitleSelected : {}),
           }}>
             {subMode ? 'Tap ⇄ to select who comes off'
               : selectedPlayer ? `Logging for ${selectedPlayer.name}`
-              : 'Tap a player on the left'}
+                : tabletLandscape ? 'Tap a player across the top' : 'Tap a player on the left'}
           </div>
           <button style={{
             ...s.passingToggle,
@@ -1328,11 +1396,11 @@ function LiveMatch() {
             Passing ratings: {passingEnabled ? 'ON' : 'OFF'}
           </button>
           {passingEnabled && (
-            <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
+            <div style={{ ...s.eventGrid, ...(tabletLandscape ? s.tabletEventGrid : {}), marginBottom: '14px' }}>
               {PASS_RATINGS.map(pass => {
                 const canPass = selectedPlayer && selectedPlayer.position !== 'Setter'
                   && !eventSaving && !subMode;
-                return <button key={pass.rating} style={{ ...s.eventBtn, background: pass.color,
+                return <button key={pass.rating} style={{ ...s.eventBtn, ...(tabletLandscape ? s.tabletEventBtn : {}), background: pass.color,
                   opacity: canPass ? 1 : 0.22,
                   cursor: canPass ? 'pointer' : 'not-allowed' }}
                   disabled={!canPass}
@@ -1350,10 +1418,11 @@ function LiveMatch() {
             Player errors: {errorsEnabled ? 'ON' : 'OFF'}
           </button>
           {errorsEnabled && (
-            <div style={{ ...s.eventGrid, marginBottom: '14px' }}>
+            <div style={{ ...s.eventGrid, ...(tabletLandscape ? s.tabletEventGrid : {}), marginBottom: '14px' }}>
               {PLAYER_ERRORS.map(error => (
                 <button key={error.type} style={{
                   ...s.eventBtn,
+                  ...(tabletLandscape ? s.tabletEventBtn : {}),
                   background: error.color,
                   opacity: selectedPlayer && !eventSaving ? 1 : 0.3,
                   cursor: selectedPlayer && !eventSaving ? 'pointer' : 'not-allowed',
@@ -1374,12 +1443,13 @@ function LiveMatch() {
                   {group.label === 'Serve'&&serverPlayer&&
                     <span style={s.serverOnlyHint}> — {serverPlayer.name} only</span>}
                 </div>
-                <div style={s.eventGrid}>
+                <div style={{ ...s.eventGrid, ...(tabletLandscape ? s.tabletEventGrid : {}) }}>
                   {group.events.map(ev => {
                     const canUse = eventIsAvailable(ev.type);
                     return <button key={ev.type}
                       style={{
                         ...s.eventBtn,
+                        ...(tabletLandscape ? s.tabletEventBtn : {}),
                         background: ev.color,
                         opacity: canUse ? 1 : 0.22,
                         cursor: canUse ? 'pointer' : 'not-allowed',
@@ -1485,6 +1555,22 @@ const s = {
   subBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 16px', background: '#1a3a00', borderBottom: '1px solid #2a4a00', fontSize: '12px', color: '#aaa' },
   subCancelBtn: { padding: '4px 8px', background: 'transparent', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '5px', cursor: 'pointer', fontSize: '11px' },
   body: { display: 'flex', height: 'calc(100vh - 120px)' },
+  tabletBody: { flexDirection: 'column', height: 'auto', minHeight: 'calc(100vh - 150px)' },
+  tabletPlayerArea: { background: '#111120', padding: '12px 14px 8px', borderBottom: '2px solid #33334a', flexShrink: 0 },
+  tabletPlayerStrip: { display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: '10px' },
+  tabletPlayerSlot: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' },
+  tabletPlayerBtn: { position: 'relative', minWidth: 0, minHeight: '105px', padding: '24px 8px 9px', borderRadius: '12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transition: 'transform 100ms ease, box-shadow 100ms ease' },
+  tabletRole: { position: 'absolute', top: '6px', left: '7px', right: '7px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', opacity: 0.9 },
+  tabletPlayerName: { maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '18px', fontWeight: '900', textShadow: '0 1px 3px rgba(0,0,0,0.5)' },
+  tabletPlayerMeta: { marginTop: '5px', fontSize: '10px', fontWeight: '800', opacity: 0.9 },
+  tabletSelectedTag: { position: 'absolute', bottom: '5px', right: '6px', padding: '2px 5px', background: '#fff', color: '#111', borderRadius: '4px', fontSize: '8px', fontWeight: '1000' },
+  tabletServerTag: { position: 'absolute', top: '5px', right: '5px', padding: '2px 4px', background: '#082b19', color: '#7dffad', borderRadius: '4px', fontSize: '8px', fontWeight: '900' },
+  tabletSubBtn: { minHeight: '34px', padding: '5px', background: '#29293b', color: '#ddd', border: '1px solid #4a4a62', borderRadius: '7px', cursor: 'pointer', fontSize: '10px', fontWeight: '800' },
+  tabletBenchStrip: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '10px', padding: '8px', background: '#183018', borderRadius: '8px', fontSize: '12px' },
+  tabletBenchBtn: { minHeight: '42px', padding: '8px 13px', background: '#227047', color: '#fff', border: '2px solid #55d58d', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' },
+  tabletEventPanel: { padding: '10px 14px 18px', overflowY: 'visible' },
+  tabletEventGrid: { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '12px' },
+  tabletEventBtn: { minHeight: '86px', fontSize: '17px', borderWidth: '2px' },
   playerPanel: { width: '240px', background: '#141428', padding: '12px', overflowY: 'auto', borderRight: '1px solid #2a2a4a', flexShrink: 0 },
   rotationMini: { background: '#1a1a38', borderRadius: '8px', padding: '6px', marginBottom: '10px', border: '1px solid #2a2a4a' },
   rotNetLine2: { height: '1px', background: '#F5C800', opacity: 0.3, marginBottom: '4px' },
@@ -1501,7 +1587,7 @@ const s = {
   playerSlot: { display: 'flex', alignItems: 'stretch', gap: '6px', marginBottom: '7px' },
   playerBtn: { flex: 1, minHeight: '56px', padding: '10px 11px', background: '#1e1e38', color: 'white', border: '1px solid #2a2a4a', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' },
   playerBtnTop: { display: 'flex', gap: '3px', alignItems: 'center', marginBottom: '1px' },
-  playerBtnActive: { background: '#1a3a6e', border: '1px solid #2e6ab5' },
+  playerBtnActive: { border: '4px solid #fff', outline: '3px solid #F5C800', boxShadow: '0 4px 12px rgba(245,200,0,0.35)' },
   playerBtnSubOut: { border: '1px solid #e74c3c' },
   playerBtnServer: { border: '1px solid #2ecc71' },
   posTag: { fontSize: '8px', color: '#555', fontWeight: '700', background: '#2a2a4a', padding: '1px 3px', borderRadius: '3px' },
