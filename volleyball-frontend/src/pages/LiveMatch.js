@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getPlayersByTeam, getMatches, getTeams } from '../api';
 import { API_BASE_URL } from '../config';
 import { QRCodeSVG } from 'qrcode.react';
+import {
+  enterWaitingLibero,
+  planInitialLiberoEntry,
+} from '../utils/liberoRotation';
 
 const BASE_URL = API_BASE_URL;
 
@@ -127,6 +131,7 @@ function LiveMatch() {
   const [pendingMiddle, setPendingMiddle] = useState(null);
   const [pendingMiddlePosIndex, setPendingMiddlePosIndex] = useState(null);
   const [liberoPromptReason, setLiberoPromptReason] = useState('rotation');
+  const [pendingLiberoWait, setPendingLiberoWait] = useState(false);
 
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [weAreServing, setWeAreServing] = useState(false);
@@ -274,6 +279,7 @@ function LiveMatch() {
       if (backRowMiddleIndex !== undefined && liberos.length > 0) {
         triggerLiberoPrompt(
           positions[backRowMiddleIndex], backRowMiddleIndex, 'start',
+          weServe && backRowMiddleIndex === 0,
         );
       }
     } catch (error) {
@@ -306,50 +312,40 @@ function LiveMatch() {
     return { positions: newPositions };
   };
 
-  const triggerLiberoPrompt = (middle, posIndex, reason = 'rotation') => {
+  const triggerLiberoPrompt = (middle, posIndex, reason = 'rotation',
+                               waitForServe = false) => {
     if (liberos.length === 0) return;
     setPendingMiddle(middle);
     setPendingMiddlePosIndex(posIndex);
     setLiberoPromptReason(reason);
+    setPendingLiberoWait(waitForServe);
     setShowLiberoPrompt(true);
   };
 
   const handleLiberoChoice = async (libero) => {
-    const shouldWaitForServe = liberoPromptReason === 'start'
-      && weAreServing && pendingMiddlePosIndex === 0;
-    if (shouldWaitForServe) {
-      const waitingSwap = {
-        posIndex: pendingMiddlePosIndex,
-        middle: pendingMiddle,
-        libero,
-        waitingToEnter: true,
-      };
-      setActiveLiberoSwap(waitingSwap);
-      setShowLiberoPrompt(false);
-      setPendingMiddle(null);
-      setPendingMiddlePosIndex(null);
-      await saveTrackerState(positions, bench, weAreServing,
-        rotationNumber, passingEnabled, waitingSwap);
-      return;
-    }
-    const newPositions = [...positions];
-    newPositions[pendingMiddlePosIndex] = libero;
-    const newBench = [...bench.filter(p => p.id !== libero.id), pendingMiddle]
-      .sort((a,b) => a.name.localeCompare(b.name));
-    setPositions(newPositions);
-    setBench(newBench);
-    // Store swap so we know to auto-swap out later
-    const swap = { posIndex: pendingMiddlePosIndex, middle: pendingMiddle, libero };
-    setActiveLiberoSwap(swap);
+    const planned = planInitialLiberoEntry({
+      positions,
+      bench,
+      middle: pendingMiddle,
+      libero,
+      positionIndex: pendingMiddlePosIndex,
+      weAreServing: pendingLiberoWait,
+    });
+    setPositions(planned.positions);
+    setBench(planned.bench);
+    setActiveLiberoSwap(planned.swap);
     setShowLiberoPrompt(false);
     setPendingMiddle(null);
     setPendingMiddlePosIndex(null);
-    await apiSaveLineup(matchId, {
-      on_court: newPositions.filter(Boolean).map(p => p.id),
-      bench: newBench.map(p => p.id),
-    });
-    await saveTrackerState(newPositions, newBench, weAreServing,
-      rotationNumber, passingEnabled, swap);
+    setPendingLiberoWait(false);
+    if (planned.changed) {
+      await apiSaveLineup(matchId, {
+        on_court: planned.positions.filter(Boolean).map(p => p.id),
+        bench: planned.bench.map(p => p.id),
+      });
+    }
+    await saveTrackerState(planned.positions, planned.bench, weAreServing,
+      rotationNumber, passingEnabled, planned.swap);
   };
 
   // Resolve a rotation, automatically moving the chosen libero from the middle
@@ -395,43 +391,6 @@ function LiveMatch() {
     return resolveLiberoRotation(
       rotateClockwise(currentPositions), currentBench, currentSwap,
     );
-  };
-
-  const enterWaitingLibero = (currentPositions, currentBench, currentSwap) => {
-    if (!currentSwap?.waitingToEnter) {
-      return {
-        positions: currentPositions,
-        bench: currentBench,
-        swap: currentSwap,
-        changed: false,
-      };
-    }
-    const middleIndex = currentPositions.findIndex(player =>
-      player?.id === currentSwap.middle.id);
-    if (![0, 4, 5].includes(middleIndex)) {
-      return {
-        positions: currentPositions,
-        bench: currentBench,
-        swap: null,
-        changed: false,
-      };
-    }
-    const newPositions = [...currentPositions];
-    newPositions[middleIndex] = currentSwap.libero;
-    const newBench = [
-      ...currentBench.filter(player => player.id !== currentSwap.libero.id),
-      currentSwap.middle,
-    ].sort((a, b) => a.name.localeCompare(b.name));
-    return {
-      positions: newPositions,
-      bench: newBench,
-      swap: {
-        posIndex: middleIndex,
-        middle: currentSwap.middle,
-        libero: currentSwap.libero,
-      },
-      changed: true,
-    };
   };
 
   const serverPlayer = positions[0];
@@ -533,7 +492,9 @@ function LiveMatch() {
     }
 
     if (eventType === 'opponent_point') {
-      const entry = enterWaitingLibero(positions, bench, activeLiberoSwap);
+      const entry = enterWaitingLibero({
+        positions, bench, swap: activeLiberoSwap,
+      });
       setPositions(entry.positions);
       setBench(entry.bench);
       setActiveLiberoSwap(entry.swap);
@@ -569,7 +530,9 @@ function LiveMatch() {
     }
 
     if (['serve_error', 'foot_fault', 'net_touch', 'spike_error'].includes(eventType)) {
-      const entry = enterWaitingLibero(positions, bench, activeLiberoSwap);
+      const entry = enterWaitingLibero({
+        positions, bench, swap: activeLiberoSwap,
+      });
       if (eventType === 'serve_error' && eventPlayer &&
           isMiddle(eventPlayer) && serverPlayer?.id === eventPlayer.id
           && !activeLiberoSwap?.waitingToEnter) {
@@ -1001,7 +964,11 @@ function LiveMatch() {
         <div style={s.promptTitle}>Libero swap</div>
         <div style={s.promptSub}>
           {liberoPromptReason === 'start' ? (
-            <>The back-row middle is <strong>{pendingMiddle?.name}</strong>. Which libero replaces them before the first point?</>
+            pendingLiberoWait ? (
+              <><strong>{pendingMiddle?.name}</strong> is serving from P1. Choose the libero who will replace them only after the serving run ends.</>
+            ) : (
+              <>The back-row middle is <strong>{pendingMiddle?.name}</strong>. Which libero replaces them before the first point?</>
+            )
           ) : (
             <><strong>{pendingMiddle?.name}</strong> is leaving the service position. Which libero comes in?</>
           )}
@@ -1016,6 +983,7 @@ function LiveMatch() {
             setShowLiberoPrompt(false);
             setPendingMiddle(null);
             setPendingMiddlePosIndex(null);
+            setPendingLiberoWait(false);
           }}>Skip</button>
         </div>
       </div>
