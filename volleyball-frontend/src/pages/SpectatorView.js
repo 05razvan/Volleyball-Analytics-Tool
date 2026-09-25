@@ -126,6 +126,10 @@ function SpectatorView() {
     ? score.away_team_name : score.home_team_name;
   const setsWon = (score.sets||[]).filter(s => s.us > s.them).length;
   const setsLost = (score.sets||[]).filter(s => s.them > s.us).length;
+  const timeline = [
+    ...events.map(event => ({ ...event, timelineType: 'event' })),
+    ...substitutions.map(sub => ({ ...sub, timelineType: 'substitution' })),
+  ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   const servingName = tracker?.we_are_serving ? ourName : opponentName;
   const shareMatch = async () => {
     if (navigator.share) {
@@ -270,30 +274,32 @@ function SpectatorView() {
       )}
 
       {/* Live feed */}
-      {substitutions.length > 0 && (
-        <div style={styles.feedCard}>
-          <div style={styles.feedTitle}>Substitutions</div>
-          <div style={styles.feedList}>
-            {[...substitutions].reverse().map(sub => (
-              <div key={sub.id} style={styles.feedItem}>
-                <span style={styles.feedEmoji}>⇄</span>
-                <div style={styles.feedContent}>
-                  <span style={styles.feedAction}>{sub.player_in_name} in</span>
-                  <span style={styles.feedPlayer}> · {sub.player_out_name} out</span>
-                  <span style={styles.feedSet}> S{sub.set_number} · R{sub.rotation_number}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Live feed */}
-      {events.length > 0 && (
+      {timeline.length > 0 && (
         <div style={styles.feedCard}>
           <div style={styles.feedTitle}>Live feed</div>
           <div style={styles.feedList}>
-            {events.map((event, i) => {
+            {timeline.map((event, i) => {
+              const time = new Date(event.timestamp).toLocaleTimeString('en-GB', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+              });
+              const isLatest = i === 0;
+              if (event.timelineType === 'substitution') {
+                return (
+                  <div key={`sub-${event.id}`} style={{
+                    ...styles.feedItem,
+                    ...(isLatest ? styles.feedItemLatest : {}),
+                  }}>
+                    <span style={styles.feedEmoji}>⇄</span>
+                    <div style={styles.feedContent}>
+                      <span style={{ ...styles.feedAction, color: '#F5C800' }}>Substitution</span>
+                      <span style={styles.feedPlayer}> · {event.player_in_name} in</span>
+                      <span style={styles.feedPlayer}> · {event.player_out_name} out</span>
+                      <span style={styles.feedSet}> S{event.set_number} · R{event.rotation_number}</span>
+                    </div>
+                    <span style={styles.feedTime}>{time}</span>
+                  </div>
+                );
+              }
               const info = event.event_type === 'pass' && PASS_LABELS[event.pass_rating]
                 ? PASS_LABELS[event.pass_rating]
                 : EVENT_LABELS[event.event_type] ?? {
@@ -302,11 +308,6 @@ function SpectatorView() {
               const playerName = event.player_id
                 ? (players[event.player_id] ?? `Player ${event.player_id}`)
                 : null;
-              const time = new Date(event.timestamp).toLocaleTimeString('en-GB', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-              });
-              const isLatest = i === 0;
-
               // point description
               let pointDesc = null;
               if (info.point === 'us') {
@@ -316,7 +317,7 @@ function SpectatorView() {
               }
 
               return (
-                <div key={event.id} style={{
+                <div key={`event-${event.id}`} style={{
                   ...styles.feedItem,
                   ...(isLatest ? styles.feedItemLatest : {}),
                 }}>
@@ -351,7 +352,7 @@ function SpectatorView() {
         </div>
       )}
 
-      {events.length === 0 && score.status === 'live' && (
+      {timeline.length === 0 && score.status === 'live' && (
         <div style={styles.feedCard}>
           <div style={styles.feedTitle}>Live feed</div>
           <p style={styles.noEvents}>Waiting for events...</p>
