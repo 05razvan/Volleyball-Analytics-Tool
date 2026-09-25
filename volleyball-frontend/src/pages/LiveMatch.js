@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import {
   enterWaitingLibero,
   planInitialLiberoEntry,
+  resolveLiberoAfterRotation,
 } from '../utils/liberoRotation';
 
 const BASE_URL = API_BASE_URL;
@@ -291,27 +292,6 @@ function LiveMatch() {
 
   const isMiddle = (player) => player?.position === 'Middle Blocker';
 
-  // Check if a libero has reached any front-row position and swap the middle
-  // back in. This is deliberately defensive so manual rotation corrections can
-  // never leave a libero in P2, P3 or P4.
-  // Called after every rotation with the NEW positions array
-  const checkLiberoSwapOut = (newPositions, swap) => {
-    if (!swap) return { positions: newPositions };
-    if (swap.waitingToEnter) return { positions: newPositions };
-    const libInPos = newPositions.findIndex(p => p?.id === swap.libero.id);
-    if ([1, 2, 3].includes(libInPos)) {
-      const updated = [...newPositions];
-      updated[libInPos] = swap.middle;
-      return {
-        positions: updated,
-        clearedSwap: true,
-        returnedMiddle: swap.middle,
-        returnedLibero: swap.libero,
-      };
-    }
-    return { positions: newPositions };
-  };
-
   const triggerLiberoPrompt = (middle, posIndex, reason = 'rotation',
                                waitForServe = false) => {
     if (liberos.length === 0) return;
@@ -348,49 +328,13 @@ function LiveMatch() {
       rotationNumber, passingEnabled, planned.swap);
   };
 
-  // Resolve a rotation, automatically moving the chosen libero from the middle
-  // entering the front row to the other middle entering the back row.
-  const resolveLiberoRotation = (rotated, currentBench, currentSwap) => {
-    const { positions: final, clearedSwap, returnedMiddle, returnedLibero } =
-      checkLiberoSwapOut(rotated, currentSwap);
-
-    let newPositions = final;
-    let newBench = currentBench;
-    let newSwap = currentSwap;
-
-    if (clearedSwap) {
-      newSwap = null;
-      newBench = [
-        ...currentBench.filter(p => p.id !== returnedMiddle.id),
-        returnedLibero,
-      ].sort((a,b) => a.name.localeCompare(b.name));
-
-      const nextMiddleIndex = [0, 4, 5].find(index =>
-        isMiddle(newPositions[index]));
-      if (nextMiddleIndex !== undefined) {
-        const nextMiddle = newPositions[nextMiddleIndex];
-        newPositions = [...newPositions];
-        newPositions[nextMiddleIndex] = returnedLibero;
-        newBench = [
-          ...newBench.filter(player => player.id !== returnedLibero.id),
-          nextMiddle,
-        ].sort((a, b) => a.name.localeCompare(b.name));
-        newSwap = {
-          posIndex: nextMiddleIndex,
-          middle: nextMiddle,
-          libero: returnedLibero,
-        };
-      }
-    }
-
-    return { positions: newPositions, bench: newBench, swap: newSwap };
-  };
-
   // Rotate and check libero swap out — returns new state values
   const doRotation = (currentPositions, currentBench, currentSwap) => {
-    return resolveLiberoRotation(
-      rotateClockwise(currentPositions), currentBench, currentSwap,
-    );
+    return resolveLiberoAfterRotation({
+      positions: rotateClockwise(currentPositions),
+      bench: currentBench,
+      swap: currentSwap,
+    });
   };
 
   const serverPlayer = positions[0];
@@ -561,9 +505,9 @@ function LiveMatch() {
     const rotatedPositions = direction === 'forward'
       ? rotateClockwise(positions)
       : rotateCounterClockwise(positions);
-    const resolved = resolveLiberoRotation(
-      rotatedPositions, bench, activeLiberoSwap,
-    );
+    const resolved = resolveLiberoAfterRotation({
+      positions: rotatedPositions, bench, swap: activeLiberoSwap,
+    });
     const nextPositions = resolved.positions;
     const nextRotation = direction === 'forward'
       ? (rotationNumber === 6 ? 1 : rotationNumber + 1)

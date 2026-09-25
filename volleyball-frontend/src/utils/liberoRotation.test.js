@@ -1,4 +1,8 @@
-import { enterWaitingLibero, planInitialLiberoEntry } from './liberoRotation';
+import {
+  enterWaitingLibero,
+  planInitialLiberoEntry,
+  resolveLiberoAfterRotation,
+} from './liberoRotation';
 
 const middle = { id: 1, name: 'Middle', position: 'Middle Blocker' };
 const libero = { id: 7, name: 'Libero', position: 'Libero' };
@@ -37,4 +41,40 @@ test('inserts the libero immediately when the team is receiving', () => {
   expect(planned.changed).toBe(true);
   expect(planned.positions[0]).toBe(libero);
   expect(planned.bench).toContain(middle);
+});
+
+test('lets the next middle serve at P1 when the libero leaves the front row', () => {
+  const firstMiddle = middle;
+  const servingMiddle = {
+    id: 8, name: 'Second Middle', position: 'Middle Blocker',
+  };
+  const rotatedPositions = [
+    servingMiddle,
+    otherPlayers[0],
+    otherPlayers[1],
+    libero,
+    otherPlayers[2],
+    otherPlayers[3],
+  ];
+
+  const resolved = resolveLiberoAfterRotation({
+    positions: rotatedPositions,
+    bench: [firstMiddle, otherPlayers[4]],
+    swap: { middle: firstMiddle, libero, posIndex: 4 },
+  });
+
+  expect(resolved.positions[0]).toBe(servingMiddle);
+  expect(resolved.positions[3]).toBe(firstMiddle);
+  expect(resolved.bench).toContain(libero);
+  expect(resolved.bench).not.toContain(servingMiddle);
+  expect(resolved.swap).toMatchObject({
+    middle: servingMiddle,
+    libero,
+    posIndex: 0,
+    waitingToEnter: true,
+  });
+
+  const afterLosingServe = enterWaitingLibero(resolved);
+  expect(afterLosingServe.positions[0]).toBe(libero);
+  expect(afterLosingServe.bench).toContain(servingMiddle);
 });
