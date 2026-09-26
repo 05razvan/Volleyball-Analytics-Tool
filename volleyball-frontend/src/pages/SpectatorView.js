@@ -1,519 +1,181 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
+import { describeEvent, getLeaders, getMatchSituation, getMomentum, getServingRun } from '../utils/spectator';
 
-const api_base = API_BASE_URL;
-const EVENT_LABELS = {
-  kill:           { label: 'Kill',         emoji: '⚡', color: '#2ecc71', point: 'us'   },
-  ace:            { label: 'Ace',          emoji: '🎯', color: '#3498db', point: 'us'   },
-  serve:          { label: 'Serve',        emoji: '🏐', color: '#1a5276', point: null   },
-  spike:          { label: 'Spike',        emoji: '👊', color: '#9b59b6', point: null   },
-  dig:            { label: 'Dig',          emoji: '🤿', color: '#1abc9c', point: null   },
-  block:          { label: 'Block',        emoji: '🛡', color: '#e67e22', point: null   },
-  assist:         { label: 'Assist',       emoji: '🤝', color: '#95a5a6', point: null   },
-  serve_error:    { label: 'Serve Error',  emoji: '❌', color: '#e74c3c', point: 'them' },
-  our_point:      { label: 'Opponent Error',        emoji: '✅', color: '#2ecc71', point: 'us'   },
-  opponent_point: { label: 'GUVC Error',   emoji: '🔴', color: '#e74c3c', point: 'them' },
-  foot_fault:     { label: 'Foot Fault',   emoji: '👟', color: '#c0392b', point: 'them' },
-  net_touch:      { label: 'Net Touch',    emoji: '🕸️', color: '#c0392b', point: 'them' },
-  spike_error:    { label: 'Spike Error',  emoji: '❌', color: '#c0392b', point: 'them' },
-  setter_dump:    { label: 'Setter Dump',  emoji: '🎯', color: '#8e44ad', point: 'us'   },
-  score_correction_us:   { label: 'GUVC Score −1', emoji: '↩️', color: '#888', point: null },
-  score_correction_them: { label: 'Opponent Score −1', emoji: '↩️', color: '#888', point: null },
+const META = {
+  kill: ['⚡','#2ecc71'], ace: ['🎯','#3498db'], serve: ['🏐','#3498db'], spike: ['👊','#9b59b6'],
+  dig: ['🤿','#1abc9c'], block: ['🛡️','#e67e22'], kill_block: ['🧱','#2ecc71'],
+  assist: ['🤝','#95a5a6'], serve_error: ['❌','#e74c3c'], our_point: ['✅','#2ecc71'],
+  opponent_point: ['🔴','#e74c3c'], foot_fault: ['👟','#e74c3c'], net_touch: ['🕸️','#e74c3c'],
+  spike_error: ['❌','#e74c3c'], setter_dump: ['🎯','#8e44ad'], pass: ['🏐','#2980b9'],
 };
+const POSITION_COLORS = { Setter:'#8e44ad', Opposite:'#e67e22', 'Middle Blocker':'#c0392b', 'Outside Hitter':'#2980b9', Libero:'#d4ac0d' };
 
-const PASS_LABELS = [
-  { label: 'Unplayable Pass', emoji: '❌', color: '#c0392b' },
-  { label: 'Out-of-System Pass', emoji: '⚠️', color: '#d35400' },
-  { label: 'Good Pass', emoji: '👍', color: '#2980b9' },
-  { label: 'Perfect Pass', emoji: '⭐', color: '#27ae60' },
-];
-
-const POSITION_COLORS = {
-  Setter: '#8e44ad', Opposite: '#e67e22',
-  'Middle Blocker': '#c0392b', 'Outside Hitter': '#2980b9',
-  Libero: '#d4ac0d',
-};
-
-function SpectatorView() {
+export default function SpectatorView() {
   const { matchId } = useParams();
-  const [score, setScore] = useState(null);
-  const [events, setEvents] = useState([]);
-  const [players, setPlayers] = useState({});
-  const [lineup, setLineup] = useState(null);
-  const [tracker, setTracker] = useState(null);
-  const [substitutions, setSubstitutions] = useState([]);
-  const [spectatorCount, setSpectatorCount] = useState(null);
-  const [error, setError] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
-
-  const fetchAll = async () => {
-    try {
-      const response = await fetch(`${api_base}/matches/${matchId}/spectator`);
-      if (!response.ok) throw new Error();
-      const snapshot = await response.json();
-      setScore(snapshot.score);
-      setEvents(snapshot.events);
-      setLineup(snapshot.lineup);
-      setTracker(snapshot.tracker);
-      setSubstitutions(snapshot.substitutions || []);
-      setPlayers(Object.fromEntries(snapshot.events
-        .filter(event => event.player_id && event.player_name)
-        .map(event => [event.player_id, event.player_name])));
-      setLastUpdated(new Date());
-      setError(false);
-    } catch {
-      setError(true);
-    }
-  };
+  const [data,setData] = useState(null);
+  const [spectators,setSpectators] = useState(null);
+  const [error,setError] = useState(false);
+  const [updated,setUpdated] = useState(null);
+  const [technicalOpen,setTechnicalOpen] = useState(false);
+  const [scoreOnly,setScoreOnly] = useState(false);
+  const [notifications,setNotifications] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  const previous = useRef(null);
+  const notificationsRef = useRef(notifications);
+  notificationsRef.current = notifications;
 
   useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 5000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId]);
-
-  useEffect(() => {
-    const storageKey = `guvc-spectator-${matchId}`;
-    let sessionId = window.sessionStorage.getItem(storageKey);
-    if (!sessionId) {
-      sessionId = window.crypto?.randomUUID?.()
-        || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      window.sessionStorage.setItem(storageKey, sessionId);
-    }
-
-    let active = true;
-    const sendHeartbeat = async () => {
+    const fetchSnapshot = async () => {
       try {
-        const response = await fetch(`${api_base}/matches/${matchId}/spectators/heartbeat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
+        const response = await fetch(`${API_BASE_URL}/matches/${matchId}/spectator`);
+        if (!response.ok) throw new Error();
+        const next = await response.json();
+        const old = previous.current;
+        previous.current = next.score;
+        if (old && notificationsRef.current && typeof Notification !== 'undefined') {
+          if (old.status !== 'completed' && next.score.status === 'completed') {
+            new Notification('Full time', { body: `${next.score.our_team_name}'s match has finished.` });
+          } else if ((next.score.sets || []).length > (old.sets || []).length) {
+            const set = next.score.sets.at(-1);
+            new Notification(`Set ${set.set} finished`, { body: `${set.us}–${set.them}` });
+          }
+        }
+        setData(next); setUpdated(new Date()); setError(false);
+      } catch { setError(true); }
+    };
+    fetchSnapshot();
+    const interval = setInterval(fetchSnapshot,5000);
+    return () => clearInterval(interval);
+  },[matchId]);
+
+  useEffect(() => {
+    const key = `guvc-spectator-${matchId}`;
+    let id = sessionStorage.getItem(key);
+    if (!id) { id = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`; sessionStorage.setItem(key,id); }
+    let active = true;
+    const heartbeat = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/matches/${matchId}/spectators/heartbeat`,{
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:id}),
         });
-        if (!response.ok) return;
-        const data = await response.json();
-        if (active) setSpectatorCount(data.spectators);
-      } catch {
-        // A temporary network failure should not interrupt the scoreboard.
-      }
+        if (response.ok && active) setSpectators((await response.json()).spectators);
+      } catch { /* Keep showing the last score during temporary connection problems. */ }
     };
+    heartbeat();
+    const interval = setInterval(heartbeat,10000);
+    return () => { active=false; clearInterval(interval); };
+  },[matchId]);
 
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 10000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [matchId]);
+  const toggleNotifications = async () => {
+    if (typeof Notification === 'undefined') return alert('Notifications are not supported by this browser.');
+    if (Notification.permission !== 'granted') setNotifications((await Notification.requestPermission()) === 'granted');
+    else setNotifications(value => !value);
+  };
+  const toggleFullscreen = async () => {
+    const next = !scoreOnly; setScoreOnly(next);
+    try {
+      if (next && !document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+      if (!next && document.fullscreenElement) await document.exitFullscreen?.();
+    } catch { /* Score-only mode still works when browser fullscreen is unavailable. */ }
+  };
+  if (error) return <Shell spectators={spectators}><div style={styles.error}>Match not found.</div></Shell>;
+  if (!data) return <Shell spectators={spectators}><div style={styles.muted}>Loading match…</div></Shell>;
 
-  if (error) return (
-    <div style={styles.page}>
-      <Header spectatorCount={spectatorCount} />
-      <div style={styles.errorBox}>Match not found.</div>
-    </div>
-  );
-
-  if (!score) return (
-    <div style={styles.page}>
-      <Header spectatorCount={spectatorCount} />
-      <div style={styles.loading}>Loading match...</div>
-    </div>
-  );
-
+  const { score,events=[],lineup,tracker,substitutions=[] } = data;
   const ourName = score.our_team_name;
-  const opponentName = score.home_team_name === ourName
-    ? score.away_team_name : score.home_team_name;
-  const setsWon = (score.sets||[]).filter(s => s.us > s.them).length;
-  const setsLost = (score.sets||[]).filter(s => s.them > s.us).length;
-  const timeline = [
-    ...events.map(event => ({ ...event, timelineType: 'event' })),
-    ...substitutions.map(sub => ({ ...sub, timelineType: 'substitution' })),
-  ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const servingName = tracker?.we_are_serving ? ourName : opponentName;
-  const shareMatch = async () => {
-    if (navigator.share) {
-      await navigator.share({ title: `${ourName} vs ${opponentName}`, url: window.location.href });
-    } else {
-      await navigator.clipboard.writeText(window.location.href);
-      alert('Spectator link copied.');
-    }
+  const opponentName = score.home_team_name === ourName ? score.away_team_name : score.home_team_name;
+  const setsWon = (score.sets||[]).filter(set => set.us > set.them).length;
+  const setsLost = (score.sets||[]).filter(set => set.them > set.us).length;
+  const servingSide = tracker?.we_are_serving ? 'us' : 'them';
+  const servingName = servingSide === 'us' ? ourName : opponentName;
+  const server = servingSide === 'us' ? lineup?.on_court?.[0] : null;
+  const momentum = getMomentum(events);
+  const situation = getMatchSituation(score,ourName,opponentName);
+  const timeline = [...events.map(x=>({...x,timelineType:'event'})),...substitutions.map(x=>({...x,timelineType:'substitution'}))]
+    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const share = async () => {
+    const payload={title:`${ourName} vs ${opponentName} live`,text:'Follow the match live on GUVC Analytics.',url:window.location.href};
+    if (navigator.share) await navigator.share(payload);
+    else { await navigator.clipboard.writeText(window.location.href); alert('Spectator link copied.'); }
   };
 
-  return (
-    <div style={styles.page}>
-      <Header spectatorCount={spectatorCount} onShare={shareMatch} />
-
-      {/* Score */}
-      <div style={styles.card}>
-        <div style={styles.liveRow}>
-          {score.status === 'live'
-            ? <span style={styles.liveDot}>● LIVE</span>
-            : <span style={styles.statusTag}>{score.status.toUpperCase()}</span>}
-          <span style={styles.setInfo}>Set {score.current_set}</span>
-          {tracker && <span style={styles.setInfo}>Rotation {tracker.rotation_number}</span>}
-        </div>
-
-        {tracker && score.status === 'live' && (
-          <div style={styles.servingBanner}>🏐 {servingName} serving</div>
-        )}
-
-        <div style={styles.scoreRow}>
-          <div style={styles.team}>
-            <div style={styles.teamName}>{ourName}</div>
-            <div style={styles.bigScore}>{score.current_set_our}</div>
-            <div style={styles.setsWon}>{setsWon} set{setsWon!==1?'s':''}</div>
-          </div>
-          <div style={styles.divider}>–</div>
-          <div style={styles.team}>
-            <div style={styles.teamName}>{opponentName}</div>
-            <div style={styles.bigScore}>{score.current_set_opponent}</div>
-            <div style={styles.setsWon}>{setsLost} set{setsLost!==1?'s':''}</div>
-          </div>
-        </div>
-
-        {score.sets && score.sets.length > 0 && (
-          <div style={styles.setsRow}>
-            {score.sets.map(s => (
-              <div key={s.set} style={styles.setPill}>
-                <span style={styles.setNum}>Set {s.set}</span>
-                <span style={styles.setScore}>{s.us} – {s.them}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={styles.refreshNote}>
-          {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('en-GB', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-          })}` : 'Connecting…'} · refreshes every 5 seconds
-        </div>
+  return <div style={{...styles.page,...(scoreOnly?styles.fullscreenPage:{})}}>
+    <Header spectators={spectators} share={share} notifications={notifications} toggleNotifications={toggleNotifications} scoreOnly={scoreOnly} toggleFullscreen={toggleFullscreen}/>
+    <div style={{...styles.scoreCard,...(scoreOnly?styles.fullscreenCard:{})}}>
+      <div style={styles.liveRow}>
+        <span style={score.status==='live'?styles.live:styles.final}>{score.status==='live'?'● LIVE':'FINAL'}</span>
+        <span style={styles.dim}>Set {score.current_set}</span>
+        {tracker && score.status==='live' && <span style={styles.dim}>Rotation {tracker.rotation_number}</span>}
       </div>
-
-      {/* Court diagram */}
-      {lineup && lineup.on_court.length > 0 && (
-        <div style={styles.feedCard}>
-          <div style={styles.feedTitle}>Current lineup — {ourName}</div>
-
-          <div style={styles.courtCard}>
-            <div style={styles.courtNetLabel}>NET</div>
-
-            {/* Front row: P4 P3 P2 — indices 3,2,1 in on_court array */}
-            <div style={styles.courtRow}>
-              {[3,2,1].map(i => {
-                const p = lineup.on_court[i];
-                return (
-                  <div key={i} style={{
-                    ...styles.courtSlot,
-                    borderTop: `4px solid ${POSITION_COLORS[p?.position] || '#444'}`,
-                  }}>
-                    <div style={styles.courtPosTag}>P{i+1}</div>
-                    {p ? (
-                      <>
-                        <div style={styles.courtJersey}>
-                          {p.jersey_number ? `#${p.jersey_number}` : ''}
-                        </div>
-                        <div style={styles.courtName}>{p.name}</div>
-                        <div style={styles.courtPos}>{p.position ?? ''}</div>
-                      </>
-                    ) : <div style={styles.courtEmpty}>—</div>}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={styles.courtDivider} />
-
-            {/* Back row: P5 P6 P1 — indices 4,5,0 */}
-            <div style={styles.courtRow}>
-              {[4,5,0].map(i => {
-                const p = lineup.on_court[i];
-                const isServer = i === 0 && tracker?.we_are_serving;
-                return (
-                  <div key={i} style={{
-                    ...styles.courtSlot,
-                    borderTop: `4px solid ${POSITION_COLORS[p?.position] || '#444'}`,
-                    ...(isServer ? styles.courtSlotServer : {}),
-                  }}>
-                    <div style={styles.courtPosTag}>P{i===0?1:i+1}</div>
-                    {isServer && <div style={styles.courtServTag}>SERVING</div>}
-                    {p ? (
-                      <>
-                        <div style={styles.courtJersey}>
-                          {p.jersey_number ? `#${p.jersey_number}` : ''}
-                        </div>
-                        <div style={styles.courtName}>{p.name}</div>
-                        <div style={styles.courtPos}>{p.position ?? ''}</div>
-                      </>
-                    ) : <div style={styles.courtEmpty}>—</div>}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={styles.courtBaseLabel}>BASELINE</div>
-          </div>
-
-          {/* Bench */}
-          {lineup.bench && lineup.bench.length > 0 && (
-            <>
-              <div style={styles.benchLabel}>Bench</div>
-              <div style={styles.benchRow}>
-                {lineup.bench.map(p => (
-                  <div key={p.id} style={styles.benchPlayer}>
-                    <div style={styles.benchJersey}>
-                      {p.jersey_number ? `#${p.jersey_number}` : '—'}
-                    </div>
-                    <div style={styles.benchName}>{p.name}</div>
-                    <div style={styles.benchPos}>{p.position ?? ''}</div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Live feed */}
-      {timeline.length > 0 && (
-        <div style={styles.feedCard}>
-          <div style={styles.feedTitle}>Live feed</div>
-          <div style={styles.feedList}>
-            {timeline.map((event, i) => {
-              const time = new Date(event.timestamp).toLocaleTimeString('en-GB', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-              });
-              const isLatest = i === 0;
-              if (event.timelineType === 'substitution') {
-                return (
-                  <div key={`sub-${event.id}`} style={{
-                    ...styles.feedItem,
-                    ...(isLatest ? styles.feedItemLatest : {}),
-                  }}>
-                    <span style={styles.feedEmoji}>⇄</span>
-                    <div style={styles.feedContent}>
-                      <span style={{ ...styles.feedAction, color: '#F5C800' }}>Substitution</span>
-                      <span style={styles.feedPlayer}> · {event.player_in_name} in</span>
-                      <span style={styles.feedPlayer}> · {event.player_out_name} out</span>
-                      <span style={styles.feedSet}> S{event.set_number} · R{event.rotation_number}</span>
-                    </div>
-                    <span style={styles.feedTime}>{time}</span>
-                  </div>
-                );
-              }
-              const info = event.event_type === 'pass' && PASS_LABELS[event.pass_rating]
-                ? PASS_LABELS[event.pass_rating]
-                : EVENT_LABELS[event.event_type] ?? {
-                label: event.event_type, emoji: '•', color: '#888', point: null,
-                };
-              const playerName = event.player_id
-                ? (players[event.player_id] ?? `Player ${event.player_id}`)
-                : null;
-              // point description
-              let pointDesc = null;
-              if (info.point === 'us') {
-                pointDesc = `→ point to ${ourName}`;
-              } else if (info.point === 'them') {
-                pointDesc = `→ point to ${opponentName}`;
-              }
-
-              return (
-                <div key={`event-${event.id}`} style={{
-                  ...styles.feedItem,
-                  ...(isLatest ? styles.feedItemLatest : {}),
-                }}>
-                  <span style={styles.feedEmoji}>{info.emoji}</span>
-                  <div style={styles.feedContent}>
-                    <span style={{ ...styles.feedAction, color: info.color }}>
-                      {info.label}
-                    </span>
-                    {playerName && (
-                      <span style={styles.feedPlayer}> · {playerName}</span>
-                    )}
-                    {event.assist_player_name && (
-                      <span style={styles.feedPlayer}>
-                        {' · '}{event.event_type === 'kill' ? 'assist' : 'set by'} {event.assist_player_name}
-                      </span>
-                    )}
-                    {pointDesc && (
-                      <span style={{
-                        ...styles.feedPoint,
-                        color: info.point === 'us' ? '#2ecc71' : '#e74c3c',
-                      }}>
-                        {' '}{pointDesc}
-                      </span>
-                    )}
-                    <span style={styles.feedSet}> S{event.set_number}</span>
-                  </div>
-                  <span style={styles.feedTime}>{time}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {timeline.length === 0 && score.status === 'live' && (
-        <div style={styles.feedCard}>
-          <div style={styles.feedTitle}>Live feed</div>
-          <p style={styles.noEvents}>Waiting for events...</p>
-        </div>
-      )}
+      {situation && <div style={styles.situation}>{situation}</div>}
+      {tracker && score.status==='live' && <div style={styles.serving}>🏐 {server?`${server.name} serving for `:''}{servingName}{getServingRun(events,servingSide)>1?` · ${getServingRun(events,servingSide)}-point run`:''}</div>}
+      <div style={styles.scoreRow}>
+        <Team name={ourName} points={score.current_set_our} sets={setsWon} huge={scoreOnly}/>
+        <span style={styles.dash}>–</span>
+        <Team name={opponentName} points={score.current_set_opponent} sets={setsLost} huge={scoreOnly}/>
+      </div>
+      {!!score.sets?.length && <div style={styles.sets}>{score.sets.map(set=><div key={set.set} style={styles.set}><small>SET {set.set}</small><b>{set.us} – {set.them}</b></div>)}</div>}
+      <div style={styles.refresh}>{updated?`Updated ${updated.toLocaleTimeString('en-GB')}`:'Connecting…'} · refreshes every 5 seconds</div>
     </div>
-  );
+
+    <div style={styles.context}>
+      <div><Label>Last 10 points</Label><div style={styles.momentum}>{momentum.length?momentum.map((point,index)=><span key={`${point.id}-${index}`} title={point.side==='us'?ourName:opponentName} style={{...styles.dot,background:point.side==='us'?'#F5C800':'#e74c3c'}}/>):<span style={styles.muted}>Waiting for points…</span>}</div></div>
+      <div style={styles.legend}><span style={{color:'#F5C800'}}>● {ourName}</span><span style={{color:'#e74c3c'}}>● {opponentName}</span></div>
+    </div>
+
+    {!scoreOnly && <>
+      <Card title="Match leaders"><div style={styles.leaders}>{getLeaders(events).map(leader=><div key={leader.key} style={styles.leader}><b>{leader.value}</b><span>{leader.name}</span><small>{leader.label}</small></div>)}</div></Card>
+      {!!lineup?.on_court?.length && <Card><button style={styles.toggle} onClick={()=>setTechnicalOpen(open=>!open)}><span>Lineup & technical view</span><span>{technicalOpen?'▲':'▼'}</span></button>{technicalOpen&&<Lineup lineup={lineup} tracker={tracker} team={ourName}/>}</Card>}
+      <Card title={score.status==='completed'?'Match story':'Live commentary'}>
+        {timeline.length?<div style={styles.feed}>{timeline.map((item,index)=><FeedItem key={`${item.timelineType}-${item.id}`} item={item} latest={index===0} ourName={ourName} opponentName={opponentName}/>)}</div>:<p style={styles.empty}>{score.status==='live'?'Waiting for the first rally…':'No events were recorded.'}</p>}
+      </Card>
+    </>}
+  </div>;
 }
 
-function Header({ spectatorCount, onShare }) {
-  return (
-    <div style={styles.header}>
-      <span style={styles.headerLeft}>👁👁 Spectating</span>
-      {spectatorCount !== null && (
-        <span style={styles.viewerCount}>
-          👥 {spectatorCount} watching
-        </span>
-      )}
-      {onShare && <button style={styles.shareBtn} onClick={onShare}>Share</button>}
-    </div>
-  );
+function Shell({spectators,children}) { return <div style={styles.page}><Header spectators={spectators}/>{children}</div>; }
+function Header({spectators,share,notifications,toggleNotifications,scoreOnly,toggleFullscreen}) {
+  return <div style={styles.header}><div style={styles.brand}><img src="/guvc-logo.png" alt="GUVC"/><span>GUVC Live</span></div><div style={styles.actions}>
+    {spectators!==null&&<span style={styles.pill}>👥 {spectators}</span>}
+    {toggleNotifications&&<button style={styles.darkButton} onClick={toggleNotifications}>{notifications?'🔔 On':'🔕 Alerts'}</button>}
+    {toggleFullscreen&&<button style={styles.darkButton} onClick={toggleFullscreen}>{scoreOnly?'Exit score':'⛶ Score'}</button>}
+    {share&&<button style={styles.share} onClick={share}>Share</button>}
+  </div></div>;
+}
+function Team({name,points,sets,huge}) { return <div style={styles.team}><div style={styles.teamName}>{name}</div><div style={{...styles.points,...(huge?styles.huge:{})}}>{points}</div><small>{sets} set{sets!==1?'s':''}</small></div>; }
+function Card({title,children}) { return <div style={styles.card}>{title&&<Label>{title}</Label>}{children}</div>; }
+function Label({children}) { return <div style={styles.label}>{children}</div>; }
+
+function Lineup({lineup,tracker,team}) {
+  const slot=index => {
+    const player=lineup.on_court[index]; const server=index===0&&tracker?.we_are_serving;
+    return <div key={index} style={{...styles.courtSlot,borderTop:`4px solid ${POSITION_COLORS[player?.position]||'#444'}`,...(server?styles.serverSlot:{})}}>
+      <span style={styles.position}>P{index+1}</span>{server&&<small style={styles.serverTag}>SERVING</small>}
+      {player?<><b style={styles.jersey}>{player.jersey_number?`#${player.jersey_number}`:''}</b><strong>{player.name}</strong><small style={styles.dim}>{player.position||''}</small></>:<span>—</span>}
+    </div>;
+  };
+  return <div style={styles.technical}><Label>Current lineup — {team}</Label><div style={styles.court}><div style={styles.net}>NET</div><div style={styles.courtRow}>{[3,2,1].map(slot)}</div><div style={styles.courtLine}/><div style={styles.courtRow}>{[4,5,0].map(slot)}</div><div style={styles.baseline}>BASELINE</div></div>
+    {!!lineup.bench?.length&&<><Label>Bench</Label><div style={styles.bench}>{lineup.bench.map(player=><div key={player.id} style={styles.benchPlayer}><b>{player.jersey_number?`#${player.jersey_number}`:'—'}</b><span>{player.name}</span><small>{player.position||''}</small></div>)}</div></>}
+  </div>;
+}
+function FeedItem({item,latest,ourName,opponentName}) {
+  const sub=item.timelineType==='substitution'; const meta=sub?['⇄','#F5C800']:(META[item.event_type]||['•','#888']);
+  const text=sub?`${item.player_in_name} replaces ${item.player_out_name}.`:describeEvent(item,ourName,opponentName);
+  const time=new Date(item.timestamp).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  return <div style={{...styles.feedItem,...(latest?styles.latest:{})}}><span style={styles.emoji}>{meta[0]}</span><div style={styles.feedText}><strong style={{color:meta[1]}}>{text}</strong><small>Set {item.set_number}{sub?` · Rotation ${item.rotation_number}`:''}</small></div><time>{time}</time></div>;
 }
 
-const styles = {
-  page: {
-    minHeight: '100vh', background: '#111',
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'center', padding: '0 16px 32px', gap: '14px',
-  },
-  header: {
-    width: '100%', maxWidth: '760px',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '14px 0',
-  },
-  headerLeft: { fontSize: '14px', fontWeight: '700', color: '#F5C800' },
-  viewerCount: {
-    fontSize: '12px', color: '#bbb', background: '#1a1a1a',
-    border: '1px solid #2a2a2a', borderRadius: '999px', padding: '6px 10px',
-  },
-  shareBtn: { padding: '6px 11px', color: '#111', background: '#F5C800', border: 'none', borderRadius: '999px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' },
-
-  card: {
-    background: '#1a1a1a', border: '1px solid #2a2a2a',
-    borderRadius: '16px', padding: '28px 20px',
-    width: '100%', maxWidth: '760px', textAlign: 'center',
-  },
-  liveRow: {
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    gap: '12px', marginBottom: '20px',
-  },
-  liveDot: { color: '#ff6b6b', fontWeight: '700', fontSize: '14px' },
-  statusTag: { color: '#888', fontSize: '13px', textTransform: 'uppercase' },
-  setInfo: { color: '#888', fontSize: '13px' },
-  servingBanner: { display: 'inline-block', marginBottom: '16px', padding: '7px 14px', color: '#9affbd', background: '#123520', border: '1px solid #286643', borderRadius: '999px', fontSize: '12px', fontWeight: '800' },
-  scoreRow: {
-    display: 'flex', alignItems: 'center',
-    justifyContent: 'center', gap: '16px', marginBottom: '20px',
-  },
-  team: { flex: 1 },
-  teamName: {
-    fontSize: '12px', color: '#ccc', marginBottom: '6px',
-    fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em',
-  },
-  bigScore: {
-    fontSize: '68px', fontWeight: '800',
-    color: '#F5C800', lineHeight: 1, marginBottom: '6px',
-  },
-  setsWon: { fontSize: '12px', color: '#888' },
-  divider: { fontSize: '32px', color: '#333', fontWeight: '300' },
-  setsRow: {
-    display: 'flex', gap: '8px', justifyContent: 'center',
-    flexWrap: 'wrap', marginBottom: '12px',
-  },
-  setPill: {
-    background: '#222', border: '1px solid #2a2a2a', borderRadius: '8px',
-    padding: '5px 10px', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', gap: '2px',
-  },
-  setNum: { fontSize: '9px', color: '#666', textTransform: 'uppercase' },
-  setScore: { fontSize: '14px', fontWeight: '600', color: '#f0f0f0' },
-  refreshNote: { fontSize: '11px', color: '#444', marginTop: '6px' },
-
-  feedCard: {
-    background: '#1a1a1a', border: '1px solid #2a2a2a',
-    borderRadius: '16px', padding: '18px',
-    width: '100%', maxWidth: '760px',
-  },
-  feedTitle: {
-    fontSize: '11px', fontWeight: '600', color: '#F5C800',
-    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px',
-  },
-
-  // court diagram
-  courtCard: {
-    background: '#1a1a38', borderRadius: '10px',
-    padding: '12px', marginBottom: '14px', border: '1px solid #2a2a4a',
-  },
-  courtNetLabel: {
-    textAlign: 'center', fontSize: '10px', color: '#F5C800',
-    fontWeight: '700', letterSpacing: '0.15em', marginBottom: '8px',
-  },
-  courtBaseLabel: {
-    textAlign: 'center', fontSize: '10px', color: '#555',
-    letterSpacing: '0.1em', marginTop: '8px',
-  },
-  courtRow: { display: 'flex', gap: '6px', marginBottom: '4px' },
-  courtDivider: { height: '2px', background: '#2a2a4a', margin: '6px 0' },
-  courtSlot: {
-    flex: 1, background: '#1e1e38', borderRadius: '8px',
-    padding: '8px 4px', minHeight: '72px',
-    display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center',
-    textAlign: 'center', position: 'relative',
-    border: '1px solid #2a2a4a',
-  },
-  courtSlotServer: { border: '1px solid #2ecc71' },
-  courtPosTag: {
-    position: 'absolute', top: '3px', left: '4px',
-    fontSize: '9px', color: '#555', fontWeight: '700',
-  },
-  courtServTag: {
-    fontSize: '8px', color: '#2ecc71', fontWeight: '700',
-    letterSpacing: '0.05em', marginBottom: '2px',
-  },
-  courtJersey: { fontSize: '11px', color: '#F5C800', fontWeight: '700', marginBottom: '2px' },
-  courtName: { fontSize: '11px', fontWeight: '600', color: '#f0f0f0', marginBottom: '1px' },
-  courtPos: { fontSize: '9px', color: '#666' },
-  courtEmpty: { color: '#333', fontSize: '12px' },
-
-  // bench
-  benchLabel: {
-    fontSize: '10px', color: '#555', textTransform: 'uppercase',
-    letterSpacing: '0.08em', marginBottom: '8px', fontWeight: '600',
-  },
-  benchRow: { display: 'flex', gap: '6px', flexWrap: 'wrap' },
-  benchPlayer: {
-    background: '#111', border: '1px solid #1e1e1e',
-    borderRadius: '6px', padding: '6px 8px', textAlign: 'center',
-    opacity: 0.7, minWidth: '60px',
-  },
-  benchJersey: { fontSize: '10px', color: '#F5C800', fontWeight: '600', marginBottom: '2px' },
-  benchName: { fontSize: '10px', color: '#ccc', fontWeight: '500' },
-  benchPos: { fontSize: '9px', color: '#555' },
-
-  // feed
-  feedList: { display: 'flex', flexDirection: 'column', gap: '4px' },
-  feedItem: {
-    display: 'flex', alignItems: 'center', gap: '8px',
-    padding: '8px 10px', borderRadius: '8px', background: '#1e1e1e',
-  },
-  feedItemLatest: { background: '#1e1e00', border: '1px solid #3a3a00' },
-  feedEmoji: { fontSize: '15px', flexShrink: 0, width: '22px', textAlign: 'center' },
-  feedContent: { flex: 1, fontSize: '13px', lineHeight: 1.4 },
-  feedAction: { fontWeight: '600' },
-  feedPlayer: { color: '#ccc' },
-  feedPoint: { fontSize: '12px', fontWeight: '500' },
-  feedSet: { color: '#444', fontSize: '11px' },
-  feedTime: { color: '#444', fontSize: '10px', flexShrink: 0 },
-  noEvents: { color: '#555', fontSize: '14px', textAlign: 'center', padding: '16px 0' },
-  loading: { color: '#888', fontSize: '16px' },
-  errorBox: { color: '#ff6b6b', fontSize: '16px' },
+const styles={
+  page:{minHeight:'100vh',background:'#0d0d0d',color:'#f5f5f5',display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 32px',gap:14},
+  fullscreenPage:{justifyContent:'center',paddingBottom:16},header:{width:'100%',maxWidth:900,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',gap:12,flexWrap:'wrap'},
+  brand:{display:'flex',alignItems:'center',gap:9,color:'#F5C800',fontWeight:900,letterSpacing:'.04em'},actions:{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'},
+  pill:{fontSize:12,color:'#bbb',background:'#1a1a1a',border:'1px solid #333',borderRadius:999,padding:'7px 10px'},darkButton:{padding:'7px 10px',color:'#ddd',background:'#1a1a1a',border:'1px solid #3a3a3a',borderRadius:999,fontSize:11,fontWeight:700,cursor:'pointer'},share:{padding:'7px 13px',color:'#111',background:'#F5C800',border:0,borderRadius:999,fontSize:11,fontWeight:900,cursor:'pointer'},
+  scoreCard:{background:'linear-gradient(160deg,#1d1d1d,#151515)',border:'1px solid #333',borderRadius:18,padding:'26px 20px',width:'100%',maxWidth:900,textAlign:'center',boxShadow:'0 12px 40px #0006'},fullscreenCard:{maxWidth:1200,padding:'40px 30px'},
+  liveRow:{display:'flex',justifyContent:'center',gap:12,alignItems:'center',marginBottom:14},live:{color:'#ff6b6b',fontWeight:900},final:{color:'#F5C800',fontWeight:900},dim:{color:'#888'},situation:{color:'#111',background:'#F5C800',padding:'7px 14px',display:'inline-block',borderRadius:999,fontWeight:900,marginBottom:12,textTransform:'uppercase',fontSize:12},serving:{display:'table',margin:'0 auto 16px',padding:'8px 14px',color:'#9affbd',background:'#123520',border:'1px solid #286643',borderRadius:999,fontSize:12,fontWeight:800},
+  scoreRow:{display:'flex',alignItems:'center',justifyContent:'center',gap:16,marginBottom:20},team:{flex:1,minWidth:0},teamName:{fontSize:13,color:'#ddd',fontWeight:800,textTransform:'uppercase',overflowWrap:'anywhere'},points:{fontSize:72,fontWeight:900,color:'#F5C800',lineHeight:1,margin:'7px 0'},huge:{fontSize:'clamp(88px,18vw,190px)'},dash:{fontSize:32,color:'#444'},sets:{display:'flex',justifyContent:'center',gap:8,flexWrap:'wrap',marginBottom:12},set:{background:'#242424',border:'1px solid #333',borderRadius:8,padding:'5px 11px',display:'flex',flexDirection:'column',gap:2},refresh:{fontSize:10,color:'#666'},
+  context:{width:'100%',maxWidth:900,background:'#171717',border:'1px solid #2d2d2d',borderRadius:14,padding:'14px 18px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:14,flexWrap:'wrap'},label:{color:'#F5C800',fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10},momentum:{display:'flex',gap:6,alignItems:'center'},dot:{width:16,height:16,borderRadius:'50%',border:'2px solid #ffffff20'},legend:{display:'flex',gap:12,fontSize:10,flexWrap:'wrap'},
+  card:{background:'#181818',border:'1px solid #2d2d2d',borderRadius:16,padding:18,width:'100%',maxWidth:900},leaders:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8},leader:{background:'#202020',border:'1px solid #303030',borderRadius:10,padding:12,display:'grid',gridTemplateColumns:'auto 1fr',columnGap:9,alignItems:'center'},toggle:{width:'100%',color:'#F5C800',background:'transparent',border:0,display:'flex',justifyContent:'space-between',padding:0,fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',cursor:'pointer'},technical:{marginTop:16},
+  court:{background:'#17172d',borderRadius:10,padding:12,marginBottom:14,border:'1px solid #2a2a4a'},net:{textAlign:'center',fontSize:10,color:'#F5C800',fontWeight:800,letterSpacing:'.15em',marginBottom:8},baseline:{textAlign:'center',fontSize:9,color:'#555',marginTop:8},courtRow:{display:'flex',gap:6},courtLine:{height:2,background:'#303050',margin:'6px 0'},courtSlot:{flex:1,background:'#1e1e38',borderRadius:8,padding:'9px 4px',minHeight:75,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',position:'relative',border:'1px solid #2a2a4a'},serverSlot:{boxShadow:'0 0 0 2px #2ecc71 inset'},position:{position:'absolute',top:3,left:4,fontSize:9,color:'#666'},serverTag:{color:'#2ecc71',fontWeight:800},jersey:{color:'#F5C800'},bench:{display:'flex',gap:6,flexWrap:'wrap'},benchPlayer:{background:'#111',border:'1px solid #292929',borderRadius:7,padding:'7px 9px',textAlign:'center',minWidth:64,display:'flex',flexDirection:'column',fontSize:10},
+  feed:{display:'flex',flexDirection:'column',gap:5},feedItem:{display:'flex',alignItems:'center',gap:9,padding:10,borderRadius:9,background:'#202020',border:'1px solid transparent'},latest:{background:'#242300',borderColor:'#4a4700'},emoji:{fontSize:17,width:24,textAlign:'center'},feedText:{flex:1,minWidth:0,display:'flex',flexDirection:'column',fontSize:13},empty:{color:'#666',textAlign:'center',padding:16},muted:{color:'#777'},error:{color:'#ff6b6b'},
 };
-
-export default SpectatorView;
