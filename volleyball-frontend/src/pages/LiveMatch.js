@@ -782,14 +782,16 @@ function LiveMatch() {
         <div style={s.promptTitle}>Finish match?</div>
         <div style={s.reviewScore}>
           <strong>{ourTeamName}</strong>
-          <span>{setsWon} – {setsLost}</span>
+          <span>{reviewSetsWon} – {reviewSetsLost}</span>
           <strong>{opponentName}</strong>
         </div>
         <div style={s.reviewSets}>
           {(score.sets || []).map(set => (
             <span key={set.set}>S{set.set}: {set.us}–{set.them}</span>
           ))}
-          <span>S{score.current_set}: {score.current_set_our}–{score.current_set_opponent}</span>
+          {(score.current_set_our !== 0 || score.current_set_opponent !== 0 || !(score.sets || []).length) && (
+            <span>S{score.current_set}: {score.current_set_our}–{score.current_set_opponent}</span>
+          )}
         </div>
         <div style={s.promptSub}>
           Check the score and undo any incorrect action before completing. Completed matches feed the analytics pages.
@@ -845,6 +847,8 @@ function LiveMatch() {
   const opponentName = teamName(opponentId);
   const setsWon = (score.sets||[]).filter(st => st.us > st.them).length;
   const setsLost = (score.sets||[]).filter(st => st.them > st.us).length;
+  const reviewSetsWon = setsWon + (score.current_set_our > score.current_set_opponent ? 1 : 0);
+  const reviewSetsLost = setsLost + (score.current_set_opponent > score.current_set_our ? 1 : 0);
   const orderedOnCourt = positions
     .map((player, courtIndex) => ({ player, courtIndex }))
     .filter(({ player }) => Boolean(player))
@@ -1359,7 +1363,7 @@ function LiveMatch() {
         <div style={m.bottomBar}>
           <button style={m.undoBtn} onClick={handleUndo}>↩{undoMsg}</button>
           <button style={m.undoBtn} onClick={() => setShowSpectatorQR(true)}>QR</button>
-          <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>
+          {(score?.current_set ?? 1) < 5 && <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>}
           <button style={m.endMatchBtn} onClick={handleComplete}>End Match</button>
         </div>
       </div>
@@ -1429,7 +1433,7 @@ function LiveMatch() {
           disabled={(score?.current_set_opponent ?? 0) <= 0 || eventSaving}
           onClick={() => handleEvent('score_correction_them')}>−1 {opponentName}</button>
         <div style={{ flex:1 }} />
-        <button style={s.endSetBtn} onClick={handleEndSet}>End Set</button>
+        {(score?.current_set ?? 1) < 5 && <button style={s.endSetBtn} onClick={handleEndSet}>End Set</button>}
         <button style={s.endMatchBtn} onClick={handleComplete}>End Match</button>
       </div>
       <RecentActions />

@@ -15,6 +15,7 @@ from models import (
 )
 from routers.matches import (
     calculate_score,
+    complete_match,
     create_match,
     delete_match,
     end_set,
@@ -487,6 +488,8 @@ def test_ending_set_requires_a_fresh_lineup(lineup_data):
         match_id=match.id,
         positions_json=str([player.id for player in players[:6]]),
     ))
+    db.add(MatchEvent(
+        match_id=match.id, event_type="our_point", set_number=1))
     db.commit()
 
     end_set(match.id, db, admin)
@@ -494,6 +497,39 @@ def test_ending_set_requires_a_fresh_lineup(lineup_data):
     assert db.query(MatchLineup).filter_by(match_id=match.id).count() == 0
     assert db.query(MatchTrackerState).filter_by(match_id=match.id).count() == 0
     assert db.get(Match, match.id).current_set == 2
+
+
+def test_complete_match_records_the_current_set_winner(lineup_data):
+    db, admin, match, _, _ = lineup_data
+    db.add_all([
+        MatchEvent(match_id=match.id, event_type="our_point", set_number=1),
+        MatchEvent(match_id=match.id, event_type="our_point", set_number=1),
+        MatchEvent(match_id=match.id, event_type="opponent_point", set_number=1),
+    ])
+    db.commit()
+
+    complete_match(match.id, db, admin)
+
+    saved = db.query(SetScore).filter_by(match_id=match.id).one()
+    assert (saved.our_score, saved.opponent_score) == (2, 1)
+    assert db.get(Match, match.id).status == "completed"
+
+
+def test_complete_after_end_set_does_not_create_an_empty_extra_set(lineup_data):
+    db, admin, match, _, _ = lineup_data
+    db.add(MatchEvent(
+        match_id=match.id, event_type="our_point", set_number=1))
+    db.commit()
+
+    end_set(match.id, db, admin)
+    assert db.get(Match, match.id).current_set == 2
+    complete_match(match.id, db, admin)
+
+    saved = db.query(SetScore).filter_by(match_id=match.id).all()
+    assert len(saved) == 1
+    assert saved[0].set_number == 1
+    assert db.get(Match, match.id).current_set == 1
+    assert db.get(Match, match.id).status == "completed"
 
 
 def test_rejects_invalid_pass_rating(lineup_data):

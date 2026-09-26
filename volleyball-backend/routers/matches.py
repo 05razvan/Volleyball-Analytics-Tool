@@ -286,6 +286,8 @@ def end_set(match_id: int, db: Session = Depends(get_db),
         match_id=match_id, set_number=match.current_set).first():
         raise HTTPException(status_code=409, detail="This set has already been recorded")
     our, their = calculate_score(match_id, match.current_set, db)
+    if our == their:
+        raise HTTPException(status_code=400, detail="A tied set cannot be ended")
     set_score = SetScore(match_id=match_id, set_number=match.current_set,
                          our_score=our, opponent_score=their)
     db.add(set_score)
@@ -307,13 +309,24 @@ def complete_match(match_id: int, db: Session = Depends(get_db),
     check_match_permission(match, current_user, db)
     if match.status != "live":
         raise HTTPException(status_code=400, detail="Only a live match can be completed")
-    if db.query(SetScore).filter_by(
-        match_id=match_id, set_number=match.current_set).first():
+    existing = db.query(SetScore).filter_by(
+        match_id=match_id, set_number=match.current_set).first()
+    if existing:
         raise HTTPException(status_code=409, detail="This set has already been recorded")
     our, their = calculate_score(match_id, match.current_set, db)
-    set_score = SetScore(match_id=match_id, set_number=match.current_set,
-                         our_score=our, opponent_score=their)
-    db.add(set_score)
+    recorded_sets = db.query(SetScore).filter(
+        SetScore.match_id == match_id).order_by(SetScore.set_number).all()
+    if our == their:
+        # "End set" advances to a fresh empty set. If the user then ends the
+        # match, finish on the last recorded set instead of creating a 0-0 set.
+        if our == 0 and recorded_sets:
+            match.current_set = recorded_sets[-1].set_number
+        else:
+            raise HTTPException(status_code=400,
+                                detail="A tied set cannot decide the match")
+    else:
+        db.add(SetScore(match_id=match_id, set_number=match.current_set,
+                        our_score=our, opponent_score=their))
     match.status = "completed"
     db.commit()
     return {"message": "Match completed"}
