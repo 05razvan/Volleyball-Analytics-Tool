@@ -136,7 +136,7 @@ export default function SpectatorView() {
 
 function Shell({spectators,children}) { return <div style={styles.page}><Header spectators={spectators}/>{children}</div>; }
 function Header({spectators,share,notifications,toggleNotifications,scoreOnly,toggleFullscreen}) {
-  return <div style={styles.header}><div style={styles.brand}><img src="/guvc-logo.png" alt="GUVC"/><span>GUVC Live</span></div><div style={styles.actions}>
+  return <div style={styles.header}><div style={styles.brand}><img src="/guvc-logo.png" alt="GUVC" style={styles.logo}/><span>GUVC Live</span></div><div style={styles.actions}>
     {spectators!==null&&<span style={styles.pill}>👥 {spectators}</span>}
     {toggleNotifications&&<button style={styles.darkButton} onClick={toggleNotifications}>{notifications?'🔔 On':'🔕 Alerts'}</button>}
     {toggleFullscreen&&<button style={styles.darkButton} onClick={toggleFullscreen}>{scoreOnly?'Exit score':'⛶ Score'}</button>}
@@ -169,7 +169,7 @@ function FeedItem({item,latest,ourName,opponentName}) {
 const styles={
   page:{minHeight:'100vh',background:'#0d0d0d',color:'#f5f5f5',display:'flex',flexDirection:'column',alignItems:'center',padding:'0 16px 32px',gap:14},
   fullscreenPage:{justifyContent:'center',paddingBottom:16},header:{width:'100%',maxWidth:900,display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 0',gap:12,flexWrap:'wrap'},
-  brand:{display:'flex',alignItems:'center',gap:9,color:'#F5C800',fontWeight:900,letterSpacing:'.04em'},actions:{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'},
+  brand:{display:'flex',alignItems:'center',gap:9,color:'#F5C800',fontWeight:900,letterSpacing:'.04em'},logo:{width:34,height:34,objectFit:'contain',display:'block',flexShrink:0},actions:{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'},
   pill:{fontSize:12,color:'#bbb',background:'#1a1a1a',border:'1px solid #333',borderRadius:999,padding:'7px 10px'},darkButton:{padding:'7px 10px',color:'#ddd',background:'#1a1a1a',border:'1px solid #3a3a3a',borderRadius:999,fontSize:11,fontWeight:700,cursor:'pointer'},share:{padding:'7px 13px',color:'#111',background:'#F5C800',border:0,borderRadius:999,fontSize:11,fontWeight:900,cursor:'pointer'},
   scoreCard:{background:'linear-gradient(160deg,#1d1d1d,#151515)',border:'1px solid #333',borderRadius:18,padding:'26px 20px',width:'100%',maxWidth:900,textAlign:'center',boxShadow:'0 12px 40px #0006'},fullscreenCard:{maxWidth:1200,padding:'40px 30px'},
   liveRow:{display:'flex',justifyContent:'center',gap:12,alignItems:'center',marginBottom:14},live:{color:'#ff6b6b',fontWeight:900},final:{color:'#F5C800',fontWeight:900},dim:{color:'#888'},situation:{color:'#111',background:'#F5C800',padding:'7px 14px',display:'inline-block',borderRadius:999,fontWeight:900,marginBottom:12,textTransform:'uppercase',fontSize:12},serving:{display:'table',margin:'0 auto 16px',padding:'8px 14px',color:'#9affbd',background:'#123520',border:'1px solid #286643',borderRadius:999,fontSize:12,fontWeight:800},
