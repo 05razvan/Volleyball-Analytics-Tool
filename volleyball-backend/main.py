@@ -18,6 +18,11 @@ def ensure_schema_columns():
                 "ALTER TABLE matches ADD COLUMN match_type VARCHAR "
                 "NOT NULL DEFAULT 'league'"
             ))
+    if "best_of" not in match_columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE matches ADD COLUMN best_of INTEGER NOT NULL DEFAULT 5"
+            ))
 
     player_columns = {column["name"] for column in inspect(engine).get_columns("players")}
     if "is_captain" not in player_columns:
@@ -43,6 +48,18 @@ def ensure_schema_columns():
             connection.execute(text(
                 "ALTER TABLE match_event_contexts "
                 "ADD COLUMN assist_player_id INTEGER REFERENCES players(id)"
+            ))
+
+    event_columns = {column["name"] for column in inspect(engine).get_columns(
+        "match_events")}
+    if "client_event_id" not in event_columns:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE match_events ADD COLUMN client_event_id VARCHAR"
+            ))
+            connection.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_match_events_client_event_id "
+                "ON match_events (client_event_id)"
             ))
 
 ensure_schema_columns()

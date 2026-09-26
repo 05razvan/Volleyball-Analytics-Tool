@@ -40,6 +40,7 @@ class MatchCreate(BaseModel):
     date: datetime
     location: Optional[str] = None
     match_type: str
+    best_of: int = Field(default=5)
 
 class MatchResponse(BaseModel):
     id: int
@@ -51,6 +52,7 @@ class MatchResponse(BaseModel):
     match_type: str
     status: str
     current_set: int
+    best_of: int = 5
     class Config:
         from_attributes = True
 
@@ -64,6 +66,7 @@ class MatchEventCreate(BaseModel):
     pass_rating: Optional[int] = None
     assist_player_id: Optional[int] = None
     state_before: Optional[dict] = None
+    client_event_id: Optional[str] = Field(default=None, max_length=64)
 
 class MatchEventResponse(BaseModel):
     id: int

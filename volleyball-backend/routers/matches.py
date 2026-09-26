@@ -39,6 +39,13 @@ POINTS_FOR_THEM = {
     "serve_error", "opponent_point", "foot_fault", "net_touch", "spike_error",
 }
 
+
+def is_valid_set_score(our: int, their: int, set_number: int,
+                       best_of: int = 5) -> bool:
+    """Return whether a score is a legal winning indoor-volleyball set score."""
+    target = 15 if set_number == best_of else 25
+    return max(our, their) >= target and abs(our - their) >= 2
+
 def team_gender(team: Team):
     if team.division.startswith("Men's"):
         return "men"
@@ -93,6 +100,9 @@ def create_match(match: MatchCreate, db: Session = Depends(get_db),
     if match.match_type not in MATCH_TYPES:
         raise HTTPException(status_code=400,
             detail="Match type must be league, cup, or friendly")
+    if match.best_of not in {3, 5}:
+        raise HTTPException(status_code=400,
+                            detail="Matches must be best of three or five")
     if not team_gender(home) or team_gender(home) != team_gender(away):
         raise HTTPException(status_code=400,
             detail="Men's and women's teams cannot play each other")
@@ -169,6 +179,14 @@ def log_event(match_id: int, event: MatchEventCreate,
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     check_match_permission(match, current_user, db)
+    if event.client_event_id:
+        existing_event = db.query(MatchEvent).filter(
+            MatchEvent.client_event_id == event.client_event_id).first()
+        if existing_event:
+            if existing_event.match_id != match_id:
+                raise HTTPException(status_code=409,
+                                    detail="Event identifier already used")
+            return existing_event
     if match.status != "live":
         raise HTTPException(status_code=400, detail="Events can only be logged for a live match")
     if event.match_id != match_id:
@@ -218,6 +236,7 @@ def log_event(match_id: int, event: MatchEventCreate,
         player_id=event.player_id,
         event_type=event.event_type,
         set_number=event.set_number,
+        client_event_id=event.client_event_id,
     )
     db.add(new_event)
     db.flush()
@@ -286,8 +305,10 @@ def end_set(match_id: int, db: Session = Depends(get_db),
         match_id=match_id, set_number=match.current_set).first():
         raise HTTPException(status_code=409, detail="This set has already been recorded")
     our, their = calculate_score(match_id, match.current_set, db)
-    if our == their:
-        raise HTTPException(status_code=400, detail="A tied set cannot be ended")
+    if not is_valid_set_score(our, their, match.current_set, match.best_of):
+        target = 15 if match.current_set == match.best_of else 25
+        raise HTTPException(status_code=400,
+            detail=f"A set must reach {target} points and be won by two")
     set_score = SetScore(match_id=match_id, set_number=match.current_set,
                          our_score=our, opponent_score=their)
     db.add(set_score)
@@ -316,6 +337,7 @@ def complete_match(match_id: int, db: Session = Depends(get_db),
     our, their = calculate_score(match_id, match.current_set, db)
     recorded_sets = db.query(SetScore).filter(
         SetScore.match_id == match_id).order_by(SetScore.set_number).all()
+    pending_set = None
     if our == their:
         # "End set" advances to a fresh empty set. If the user then ends the
         # match, finish on the last recorded set instead of creating a 0-0 set.
@@ -324,9 +346,25 @@ def complete_match(match_id: int, db: Session = Depends(get_db),
         else:
             raise HTTPException(status_code=400,
                                 detail="A tied set cannot decide the match")
+    elif is_valid_set_score(our, their, match.current_set, match.best_of):
+        pending_set = SetScore(
+            match_id=match_id, set_number=match.current_set,
+            our_score=our, opponent_score=their)
+        recorded_sets = [*recorded_sets, pending_set]
     else:
-        db.add(SetScore(match_id=match_id, set_number=match.current_set,
-                        our_score=our, opponent_score=their))
+        target = 15 if match.current_set == match.best_of else 25
+        raise HTTPException(status_code=400,
+            detail=f"The final set must reach {target} points and be won by two")
+    sets_won = sum(score.our_score > score.opponent_score
+                   for score in recorded_sets)
+    sets_lost = sum(score.opponent_score > score.our_score
+                    for score in recorded_sets)
+    sets_needed = match.best_of // 2 + 1
+    if max(sets_won, sets_lost) < sets_needed:
+        raise HTTPException(status_code=400,
+            detail=f"A best-of-{match.best_of} match ends when a team wins {sets_needed} sets")
+    if pending_set:
+        db.add(pending_set)
     match.status = "completed"
     db.commit()
     return {"message": "Match completed"}
@@ -342,6 +380,8 @@ def get_score(match_id: int, db: Session = Depends(get_db)):
     home_team = db.query(Team).filter(Team.id == match.home_team_id).first()
     away_team = db.query(Team).filter(Team.id == match.away_team_id).first()
     our_team = db.query(Team).filter(Team.id == match.our_team_id).first()
+    target = 15 if match.current_set == match.best_of else 25
+    set_complete = max(our, their) >= target and abs(our - their) >= 2
     return {
         "current_set": match.current_set,
         "current_set_our": our,
@@ -352,6 +392,12 @@ def get_score(match_id: int, db: Session = Depends(get_db)):
         "home_team_name": home_team.name if home_team else "",
         "away_team_name": away_team.name if away_team else "",
         "our_team_name": our_team.name if our_team else "",
+        "set_complete": set_complete,
+        "set_winner": "us" if set_complete and our > their else
+            "them" if set_complete else None,
+        "set_target": target,
+        "best_of": match.best_of,
+        "sets_needed": match.best_of // 2 + 1,
     }
 
 @router.get("/{match_id}/events", response_model=List[MatchEventResponse])
@@ -501,6 +547,23 @@ def log_substitution(match_id: int, data: MatchSubstitutionCreate,
     ).count()
     if players != 2 or data.player_out_id == data.player_in_id:
         raise HTTPException(status_code=400, detail="Invalid substitution players")
+    player_rows = db.query(Player).filter(Player.id.in_([
+        data.player_out_id, data.player_in_id])).all()
+    if any(player.position == "Libero" for player in player_rows):
+        raise HTTPException(status_code=400,
+            detail="Libero replacements are not ordinary substitutions")
+    prior = db.query(MatchSubstitution).filter_by(
+        match_id=match_id, set_number=data.set_number).order_by(
+            MatchSubstitution.sequence).all()
+    involving = [sub for sub in prior if data.player_out_id in {
+        sub.player_out_id, sub.player_in_id} or data.player_in_id in {
+        sub.player_out_id, sub.player_in_id}]
+    legal_return = len(involving) == 1 and (
+        involving[0].player_out_id == data.player_in_id and
+        involving[0].player_in_id == data.player_out_id)
+    if involving and not legal_return:
+        raise HTTPException(status_code=400,
+            detail="Illegal substitution: players may only reverse their original substitution once per set")
     sequence = db.query(MatchSubstitution).filter_by(match_id=match_id).count() + 1
     substitution = MatchSubstitution(
         match_id=match_id,
@@ -525,6 +588,53 @@ def log_substitution(match_id: int, data: MatchSubstitutionCreate,
     db.add(substitution)
     db.commit()
     return {"message": "Substitution recorded", "sequence": sequence}
+
+
+@router.get("/{match_id}/audit")
+def match_audit(match_id: int, db: Session = Depends(get_db),
+                current_user=Depends(get_current_user)):
+    match = db.query(Match).filter(Match.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    check_match_permission(match, current_user, db)
+    events = db.query(MatchEvent).filter_by(match_id=match_id).all()
+    contexts = {row.event_id: row for row in db.query(MatchEventContext).filter(
+        MatchEventContext.event_id.in_([event.id for event in events])).all()} \
+        if events else {}
+    issues = []
+    for set_score in db.query(SetScore).filter_by(match_id=match_id).all():
+        if not is_valid_set_score(set_score.our_score,
+                                  set_score.opponent_score,
+                                  set_score.set_number, match.best_of):
+            issues.append(f"Set {set_score.set_number} has an invalid final score")
+    our, their = calculate_score(match_id, match.current_set, db)
+    if (our or their) and not is_valid_set_score(
+            our, their, match.current_set, match.best_of):
+        issues.append(f"Set {match.current_set} is not at a valid winning score")
+    attacks = [event for event in events if event.event_type in {
+        "kill", "spike", "spike_error"}]
+    missing_sets = sum(1 for event in attacks
+                       if not contexts.get(event.id) or
+                       contexts[event.id].assist_player_id is None)
+    if missing_sets:
+        issues.append(f"{missing_sets} attack{'s' if missing_sets != 1 else ''} have no setter recorded")
+    kills = sum(event.event_type in {"kill", "setter_dump"}
+                for event in events)
+    assists = sum(context.assist_player_id is not None and
+                  next((event.event_type for event in attacks
+                        if event.id == context.event_id), None) == "kill"
+                  for context in contexts.values())
+    if assists > kills:
+        issues.append("Recorded assists exceed recorded kills")
+    return {
+        "issues": issues,
+        "checks": {
+            "kills": kills,
+            "assists": assists,
+            "attacks_without_setter": missing_sets,
+            "events": len(events),
+        },
+    }
 
 @router.get("/{match_id}/substitutions")
 def get_substitutions(match_id: int, db: Session = Depends(get_db)):

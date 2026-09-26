@@ -13,7 +13,7 @@ function Matches() {
   const [matches, setMatches] = useState([]);
   const [teams, setTeams] = useState([]);
   const [form, setForm] = useState({
-    match_type: '', home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: ''
+    match_type: '', best_of: 5, home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: ''
   });
   const [error, setError] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
@@ -66,7 +66,7 @@ function Matches() {
         our_team_id: parseInt(form.our_team_id),
       });
       setMatches([...matches, res.data]);
-      setForm({ match_type: '', home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: '' });
+      setForm({ match_type: '', best_of: 5, home_team_id: '', away_team_id: '', our_team_id: '', date: '', location: '' });
       setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'Something went wrong.');
@@ -296,6 +296,11 @@ function Matches() {
               <option value="league">League</option>
               <option value="cup">Cup</option>
               <option value="friendly">Friendly</option>
+            </select>
+            <select style={styles.input} value={form.best_of}
+              onChange={e => setForm({ ...form, best_of: parseInt(e.target.value) })}>
+              <option value={5}>Best of 5 sets</option>
+              <option value={3}>Best of 3 sets</option>
             </select>
             <select style={styles.input} value={form.home_team_id}
               disabled={!form.match_type}

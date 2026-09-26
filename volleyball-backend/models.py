@@ -73,6 +73,7 @@ class Match(Base):
     status = Column(String, default="scheduled")
     our_team_id = Column(Integer, ForeignKey("teams.id"))
     current_set = Column(Integer, default=1)
+    best_of = Column(Integer, nullable=False, default=5, server_default="5")
     events = relationship("MatchEvent", back_populates="match")
     sets = relationship("SetScore", back_populates="match")
 
@@ -93,6 +94,7 @@ class MatchEvent(Base):
     event_type = Column(String, nullable=False)
     set_number = Column(Integer, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    client_event_id = Column(String, nullable=True, unique=True, index=True)
     match = relationship("Match", back_populates="events")
 
 class Availability(Base):

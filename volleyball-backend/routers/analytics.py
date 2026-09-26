@@ -43,6 +43,36 @@ def inferred_serves(player_id, db, selected_match_ids=None):
             errors += 1
     return attempts, aces, errors
 
+
+def rally_phase_metrics(rows):
+    """Calculate receiving and serving outcomes from chronological events."""
+    ordered = sorted(rows, key=lambda row: (row[0].timestamp, row[0].id))
+    receive_attempts = sideouts = first_ball_sideouts = 0
+    serve_attempts = break_points = 0
+    attacks_in_rally = 0
+    for event, context in ordered:
+        if event.event_type in {"kill", "spike", "spike_error", "setter_dump"}:
+            attacks_in_rally += 1
+        if event.event_type not in RALLY_ENDING_EVENTS:
+            continue
+        won = event.event_type in {
+            "kill", "ace", "our_point", "kill_block", "setter_dump"}
+        if context.we_were_serving:
+            serve_attempts += 1
+            break_points += int(won)
+        else:
+            receive_attempts += 1
+            sideouts += int(won)
+            first_ball_sideouts += int(won and attacks_in_rally == 1)
+        attacks_in_rally = 0
+    return {
+        "sideout_attempts": receive_attempts,
+        "sideouts": sideouts,
+        "first_ball_sideouts": first_ball_sideouts,
+        "serve_attempts": serve_attempts,
+        "break_points": break_points,
+    }
+
 def get_player_stats(player_id: int, db: Session,
                      match_id: Optional[int] = None,
                      last_n: Optional[int] = None,
@@ -350,6 +380,7 @@ def rotation_analytics(team_id: int, last_n: Optional[int] = None,
                            if not context.we_were_serving]
         sideouts = sum(1 for event, _ in receive_rallies
                        if event.event_type in {"kill", "our_point", "kill_block", "setter_dump"})
+        phase = rally_phase_metrics(rows)
         rotations.append({
             "rotation": number,
             "points_for": points_for,
@@ -359,15 +390,34 @@ def rotation_analytics(team_id: int, last_n: Optional[int] = None,
             "sideouts": sideouts,
             "sideout_pct": round(sideouts / len(receive_rallies) * 100, 1)
                 if receive_rallies else None,
+            "first_ball_sideouts": phase["first_ball_sideouts"],
+            "first_ball_sideout_pct": round(
+                phase["first_ball_sideouts"] / phase["sideout_attempts"] * 100, 1
+            ) if phase["sideout_attempts"] else None,
+            "serve_attempts": phase["serve_attempts"],
+            "break_points": phase["break_points"],
+            "break_point_pct": round(
+                phase["break_points"] / phase["serve_attempts"] * 100, 1
+            ) if phase["serve_attempts"] else None,
         })
 
     total_attempts = sum(rotation["sideout_attempts"] for rotation in rotations)
     total_sideouts = sum(rotation["sideouts"] for rotation in rotations)
+    total_first_ball = sum(rotation["first_ball_sideouts"] for rotation in rotations)
+    total_serve_attempts = sum(rotation["serve_attempts"] for rotation in rotations)
+    total_break_points = sum(rotation["break_points"] for rotation in rotations)
     return {
         "sideout_pct": round(total_sideouts / total_attempts * 100, 1)
             if total_attempts else None,
         "sideouts": total_sideouts,
         "sideout_attempts": total_attempts,
+        "first_ball_sideouts": total_first_ball,
+        "first_ball_sideout_pct": round(total_first_ball / total_attempts * 100, 1)
+            if total_attempts else None,
+        "serve_attempts": total_serve_attempts,
+        "break_points": total_break_points,
+        "break_point_pct": round(total_break_points / total_serve_attempts * 100, 1)
+            if total_serve_attempts else None,
         "rotations": rotations,
     }
 

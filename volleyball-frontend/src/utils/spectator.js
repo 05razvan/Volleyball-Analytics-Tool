@@ -27,15 +27,16 @@ export function getMatchSituation(score, ourName, opponentName) {
   if (score.status === 'completed') return 'Full time';
   const us = score.current_set_our;
   const them = score.current_set_opponent;
-  const target = score.current_set === 5 ? 15 : 25;
+  const target = score.set_target || (score.current_set === (score.best_of || 5) ? 15 : 25);
   const sets = score.sets || [];
   const setsWon = sets.filter(set => set.us > set.them).length;
   const setsLost = sets.filter(set => set.them > set.us).length;
   const usSetPoint = us >= target - 1 && us - them >= 1;
   const themSetPoint = them >= target - 1 && them - us >= 1;
-  if (usSetPoint) return setsWon === 2 ? `Match point ${ourName}` : `Set point ${ourName}`;
-  if (themSetPoint) return setsLost === 2 ? `Match point ${opponentName}` : `Set point ${opponentName}`;
-  if (score.current_set === 5) return 'Deciding set';
+  const setsNeeded = score.sets_needed || Math.floor((score.best_of || 5) / 2) + 1;
+  if (usSetPoint) return setsWon === setsNeeded - 1 ? `Match point ${ourName}` : `Set point ${ourName}`;
+  if (themSetPoint) return setsLost === setsNeeded - 1 ? `Match point ${opponentName}` : `Set point ${opponentName}`;
+  if (score.current_set === (score.best_of || 5)) return 'Deciding set';
   if (us === them && us >= target - 1) return 'Deuce';
   return null;
 }

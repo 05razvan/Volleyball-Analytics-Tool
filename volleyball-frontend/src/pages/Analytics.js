@@ -179,7 +179,16 @@ function Analytics() {
             <StatCard label="Serve errors" value={teamStats.total_serve_errors} color="#e74c3c" />
             <StatCard label="Serve attempts" value={teamStats.total_serves} />
             <StatCard label="Side-out %" value={rotationStats?.sideout_pct ?? '—'}
-              unit={rotationStats?.sideout_pct == null ? '' : '%'} color="#2ecc71" />
+              unit={rotationStats?.sideout_pct == null ? '' : '%'} color="#2ecc71"
+              detail={`${rotationStats?.sideouts ?? 0}/${rotationStats?.sideout_attempts ?? 0} receiving rallies`} />
+            <StatCard label="First-ball side-out" value={rotationStats?.first_ball_sideout_pct ?? '—'}
+              unit={rotationStats?.first_ball_sideout_pct == null ? '' : '%'} color="#7dffad"
+              help="Receiving rallies won on the first tracked attack"
+              detail={`${rotationStats?.first_ball_sideouts ?? 0}/${rotationStats?.sideout_attempts ?? 0} receiving rallies`} />
+            <StatCard label="Break-point %" value={rotationStats?.break_point_pct ?? '—'}
+              unit={rotationStats?.break_point_pct == null ? '' : '%'} color="#F5C800"
+              help="Rallies won while serving"
+              detail={`${rotationStats?.break_points ?? 0}/${rotationStats?.serve_attempts ?? 0} serving rallies`} />
           </div>
           <div style={styles.statRow}>
             <StatCard label="Pass average" value={teamStats.team_pass_average ?? '—'}
@@ -252,6 +261,8 @@ function Analytics() {
                       <strong style={{ color: '#F5C800' }}>R{rotation.rotation}</strong>
                       <span>{rotation.points_for}–{rotation.points_against} points</span>
                       <span>{rotation.sideout_pct == null ? 'No receptions' : `${rotation.sideout_pct}% side-out`}</span>
+                      <span>{rotation.first_ball_sideout_pct == null ? '—' : `${rotation.first_ball_sideout_pct}% first-ball`} · n={rotation.sideout_attempts}</span>
+                      <span>{rotation.break_point_pct == null ? '—' : `${rotation.break_point_pct}% break-point`} · n={rotation.serve_attempts}</span>
                     </div>
                   ))}
                 </div>

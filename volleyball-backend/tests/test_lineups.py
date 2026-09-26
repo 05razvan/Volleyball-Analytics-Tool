@@ -21,6 +21,7 @@ from routers.matches import (
     end_set,
     get_spectator_snapshot,
     log_event,
+    log_substitution,
     save_tracker_state,
     set_lineup,
     spectator_heartbeat,
@@ -32,8 +33,8 @@ from routers.players import (
 )
 from routers.teams import delete_team
 from schemas import (
-    MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchTrackerStateUpdate,
-    SpectatorHeartbeat,
+    MatchCreate, MatchEventCreate, MatchLineupUpdate, MatchSubstitutionCreate,
+    MatchTrackerStateUpdate, SpectatorHeartbeat,
 )
 
 
@@ -73,6 +74,15 @@ def lineup_data():
         yield db, admin, match, players, outsider
     finally:
         db.close()
+
+
+def point_events(match_id, set_number, ours, theirs):
+    return [
+        *[MatchEvent(match_id=match_id, event_type="our_point",
+                     set_number=set_number) for _ in range(ours)],
+        *[MatchEvent(match_id=match_id, event_type="opponent_point",
+                     set_number=set_number) for _ in range(theirs)],
+    ]
 
 
 def test_saves_six_player_lineup_and_bench(lineup_data):
@@ -328,6 +338,35 @@ def test_player_errors_award_opponent_point(lineup_data, event_type):
     assert calculate_score(match.id, 1, db) == (0, 1)
 
 
+def test_duplicate_offline_event_is_only_saved_once(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    payload = MatchEventCreate(
+        match_id=match.id, player_id=players[0].id, event_type="kill",
+        set_number=1, client_event_id="offline-action-1",
+    )
+
+    first = log_event(match.id, payload, db, admin)
+    second = log_event(match.id, payload, db, admin)
+
+    assert first.id == second.id
+    assert db.query(MatchEvent).filter_by(match_id=match.id).count() == 1
+
+
+def test_libero_cannot_be_logged_as_an_ordinary_substitution(lineup_data):
+    db, admin, match, players, _ = lineup_data
+    players[1].position = "Libero"
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        log_substitution(match.id, MatchSubstitutionCreate(
+            player_out_id=players[0].id, player_in_id=players[1].id,
+            set_number=1, rotation_number=1,
+        ), db, admin)
+
+    assert error.value.status_code == 400
+    assert "Libero" in error.value.detail
+
+
 def test_spike_error_and_setter_dump_update_score_and_attack_stats(lineup_data):
     db, admin, match, players, _ = lineup_data
     player = players[0]
@@ -488,8 +527,7 @@ def test_ending_set_requires_a_fresh_lineup(lineup_data):
         match_id=match.id,
         positions_json=str([player.id for player in players[:6]]),
     ))
-    db.add(MatchEvent(
-        match_id=match.id, event_type="our_point", set_number=1))
+    db.add_all(point_events(match.id, 1, 25, 20))
     db.commit()
 
     end_set(match.id, db, admin)
@@ -502,33 +540,44 @@ def test_ending_set_requires_a_fresh_lineup(lineup_data):
 def test_complete_match_records_the_current_set_winner(lineup_data):
     db, admin, match, _, _ = lineup_data
     db.add_all([
-        MatchEvent(match_id=match.id, event_type="our_point", set_number=1),
-        MatchEvent(match_id=match.id, event_type="our_point", set_number=1),
-        MatchEvent(match_id=match.id, event_type="opponent_point", set_number=1),
+        SetScore(match_id=match.id, set_number=1,
+                 our_score=25, opponent_score=20),
+        SetScore(match_id=match.id, set_number=2,
+                 our_score=25, opponent_score=22),
+        *point_events(match.id, 3, 25, 21),
     ])
+    match.current_set = 3
     db.commit()
 
     complete_match(match.id, db, admin)
 
-    saved = db.query(SetScore).filter_by(match_id=match.id).one()
-    assert (saved.our_score, saved.opponent_score) == (2, 1)
+    assert db.query(SetScore).filter_by(match_id=match.id).count() == 3
+    saved = db.query(SetScore).filter_by(
+        match_id=match.id, set_number=3).one()
+    assert (saved.our_score, saved.opponent_score) == (25, 21)
     assert db.get(Match, match.id).status == "completed"
 
 
 def test_complete_after_end_set_does_not_create_an_empty_extra_set(lineup_data):
     db, admin, match, _, _ = lineup_data
-    db.add(MatchEvent(
-        match_id=match.id, event_type="our_point", set_number=1))
+    db.add_all([
+        SetScore(match_id=match.id, set_number=1,
+                 our_score=25, opponent_score=20),
+        SetScore(match_id=match.id, set_number=2,
+                 our_score=25, opponent_score=22),
+        *point_events(match.id, 3, 25, 21),
+    ])
+    match.current_set = 3
     db.commit()
 
     end_set(match.id, db, admin)
-    assert db.get(Match, match.id).current_set == 2
+    assert db.get(Match, match.id).current_set == 4
     complete_match(match.id, db, admin)
 
     saved = db.query(SetScore).filter_by(match_id=match.id).all()
-    assert len(saved) == 1
-    assert saved[0].set_number == 1
-    assert db.get(Match, match.id).current_set == 1
+    assert len(saved) == 3
+    assert saved[-1].set_number == 3
+    assert db.get(Match, match.id).current_set == 3
     assert db.get(Match, match.id).status == "completed"
 
 
@@ -589,6 +638,8 @@ def test_rotation_analytics_calculates_sideout_rate(lineup_data):
     assert rotation["points_for"] == 2
     assert rotation["points_against"] == 1
     assert rotation["sideout_attempts"] == 2
+    assert rotation["first_ball_sideout_pct"] == 50.0
+    assert rotation["break_point_pct"] == 100.0
 
 
 def test_home_away_analytics_separates_location(lineup_data):

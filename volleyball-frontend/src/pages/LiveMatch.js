@@ -100,6 +100,20 @@ const PLAYER_ERRORS = [
   { type: 'net_touch', label: 'Net Touch', emoji: '🕸️', color: '#922b21' },
 ];
 
+const EVENT_HELP = {
+  kill: 'Attack that immediately wins the rally.',
+  spike: 'Attack attempt that remains in play (a zero attack).',
+  spike_error: 'Attack into the net, out, or otherwise directly losing the rally.',
+  dig: 'Controlled defence of an opponent attack, not every ball kept alive.',
+  block: 'Block touch where play continues.',
+  kill_block: 'Block that immediately wins the rally.',
+  ace: 'Serve that directly wins the rally or prevents a playable second contact.',
+};
+const FAST_EVENTS = new Set([
+  'ace', 'serve_error', 'kill', 'spike', 'spike_error',
+  'dig', 'block', 'kill_block',
+]);
+
 function rotateClockwise(positions) {
   return [positions[1], positions[2], positions[3], positions[4], positions[5], positions[0]];
 }
@@ -151,6 +165,52 @@ function LiveMatch() {
   const [saveStatus, setSaveStatus] = useState(navigator.onLine ? 'saved' : 'offline');
   const [showMatchReview, setShowMatchReview] = useState(false);
   const [recentEvents, setRecentEvents] = useState([]);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [fastMode, setFastMode] = useState(
+    () => localStorage.getItem('guvc-fast-mode') !== 'off');
+  const [audit, setAudit] = useState(null);
+  const [dismissedCompleteSet, setDismissedCompleteSet] = useState(null);
+  const [showDefinitions, setShowDefinitions] = useState(false);
+
+  const fetchScore = useCallback(() => {
+    apiGetScore(matchId).then(data => setScore(data)).catch(() => {});
+  }, [matchId]);
+
+  const fetchRecentEvents = useCallback(() => {
+    authFetch(`/matches/${matchId}/events`).then(events =>
+      setRecentEvents([...events].reverse().slice(0, 6))).catch(() => {});
+  }, [matchId]);
+
+  const queueKey = `guvc-event-queue-${matchId}`;
+  const readQueue = useCallback(() => {
+    try { return JSON.parse(localStorage.getItem(queueKey) || '[]'); }
+    catch { return []; }
+  }, [queueKey]);
+  const queueEvent = useCallback((event) => {
+    const queue = [...readQueue(), event];
+    localStorage.setItem(queueKey, JSON.stringify(queue));
+    setPendingSync(queue.length);
+  }, [queueKey, readQueue]);
+  const flushQueue = useCallback(async () => {
+    const queue = readQueue();
+    if (!queue.length || !navigator.onLine) return;
+    setSaveStatus('saving');
+    const remaining = [...queue];
+    while (remaining.length) {
+      try {
+        await apiLogEvent(matchId, remaining[0]);
+        remaining.shift();
+        localStorage.setItem(queueKey, JSON.stringify(remaining));
+        setPendingSync(remaining.length);
+      } catch {
+        setSaveStatus('offline');
+        return;
+      }
+    }
+    setSaveStatus('saved');
+    fetchScore();
+    fetchRecentEvents();
+  }, [fetchRecentEvents, fetchScore, matchId, queueKey, readQueue]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -163,7 +223,8 @@ function LiveMatch() {
   }, []);
 
   useEffect(() => {
-    const online = () => setSaveStatus('saved');
+    setPendingSync(readQueue().length);
+    const online = () => { setSaveStatus('saving'); flushQueue(); };
     const offline = () => setSaveStatus('offline');
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
@@ -171,16 +232,9 @@ function LiveMatch() {
       window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
     };
-  }, []);
+  }, [flushQueue, readQueue]);
 
-  const fetchScore = useCallback(() => {
-    apiGetScore(matchId).then(data => setScore(data)).catch(() => {});
-  }, [matchId]);
-
-  const fetchRecentEvents = useCallback(() => {
-    authFetch(`/matches/${matchId}/events`).then(events =>
-      setRecentEvents([...events].reverse().slice(0, 6))).catch(() => {});
-  }, [matchId]);
+  useEffect(() => { flushQueue(); }, [flushQueue]);
 
   useEffect(() => { fetchRecentEvents(); }, [fetchRecentEvents]);
 
@@ -437,6 +491,8 @@ function LiveMatch() {
     }
 
     const event = {
+      client_event_id: window.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       match_id: parseInt(matchId),
       player_id: isScoreOnly ? null : (selectedPlayer?.id ?? null),
       event_type: eventType,
@@ -464,17 +520,26 @@ function LiveMatch() {
     setActionError('');
     setSaveStatus('saving');
     setEventSaving(true);
+    let queued = false;
     try {
       await apiLogEvent(matchId, event);
     } catch (error) {
-      setActionError(`Could not save event: ${error.message}`);
-      setSaveStatus(navigator.onLine ? 'error' : 'offline');
-      setEventSaving(false);
-      return;
+      if (!navigator.onLine || error.message === 'Failed to fetch') {
+        queueEvent(event);
+        queued = true;
+        setSaveStatus('offline');
+      } else {
+        setActionError(`Could not save event: ${error.message}`);
+        setSaveStatus('error');
+        setEventSaving(false);
+        return;
+      }
     }
     setEventSaving(false);
-    setSaveStatus('saved');
-    fetchRecentEvents();
+    if (!queued) {
+      setSaveStatus('saved');
+      fetchRecentEvents();
+    }
     setLastEvent({
       ...event,
       playerName: isScoreOnly ? null : selectedPlayer?.name,
@@ -485,7 +550,26 @@ function LiveMatch() {
     });
     const eventPlayer = selectedPlayer;
     if (!isScoreOnly) setSelectedPlayer(null);
-    fetchScore();
+    if (queued) {
+      const usPoint = ['kill','ace','our_point','kill_block','setter_dump'].includes(eventType);
+      const themPoint = ['opponent_point','serve_error','foot_fault','net_touch','spike_error'].includes(eventType);
+      setScore(current => {
+        if (!current) return current;
+        const nextUs = Math.max(0, current.current_set_our + (usPoint ? 1 : 0)
+          - (eventType === 'score_correction_us' ? 1 : 0));
+        const nextThem = Math.max(0, current.current_set_opponent + (themPoint ? 1 : 0)
+          - (eventType === 'score_correction_them' ? 1 : 0));
+        const complete = Math.max(nextUs, nextThem) >= current.set_target
+          && Math.abs(nextUs - nextThem) >= 2;
+        return {
+          ...current,
+          current_set_our: nextUs,
+          current_set_opponent: nextThem,
+          set_complete: complete,
+          set_winner: complete ? (nextUs > nextThem ? 'us' : 'them') : null,
+        };
+      });
+    } else fetchScore();
 
     if (['score_correction_us', 'score_correction_them'].includes(eventType)) {
       return;
@@ -637,6 +721,10 @@ function LiveMatch() {
   };
 
   const handleEndSet = async () => {
+    if (pendingSync) {
+      setActionError('Reconnect and wait for pending actions to sync before ending the set.');
+      return;
+    }
     if (!window.confirm(`End set ${score?.current_set}?`)) return;
     await apiEndSet(matchId);
     setSelectedPlayer(null);
@@ -652,9 +740,18 @@ function LiveMatch() {
     await fetchScore();
   };
 
-  const handleComplete = () => setShowMatchReview(true);
+  const handleComplete = async () => {
+    if (pendingSync) {
+      setActionError('Reconnect and wait for pending actions to sync before ending the match.');
+      return;
+    }
+    try { setAudit(await authFetch(`/matches/${matchId}/audit`)); }
+    catch { setAudit(null); }
+    setShowMatchReview(true);
+  };
 
   const confirmComplete = async () => {
+    if (pendingSync) return;
     setSaveStatus('saving');
     await apiCompleteMatch(matchId);
     setSaveStatus('saved');
@@ -699,12 +796,14 @@ function LiveMatch() {
     setActiveLiberoSwap(newSwap);
     setSubMode(false);
     setSubTarget(null);
-    await apiLogSubstitution(matchId, {
-      player_out_id: subTarget.id,
-      player_in_id: benchPlayer.id,
-      set_number: score?.current_set ?? 1,
-      rotation_number: rotationNumber,
-    });
+    if (subTarget.position !== 'Libero' && benchPlayer.position !== 'Libero') {
+      await apiLogSubstitution(matchId, {
+        player_out_id: subTarget.id,
+        player_in_id: benchPlayer.id,
+        set_number: score?.current_set ?? 1,
+        rotation_number: rotationNumber,
+      });
+    }
     await apiSaveLineup(matchId, {
       on_court: newPositions.filter(Boolean).map(p => p.id),
       bench: newBench.map(p => p.id),
@@ -770,10 +869,43 @@ function LiveMatch() {
       color: saveStatus === 'saved' ? '#7dffad'
         : saveStatus === 'saving' ? '#F5C800' : '#ff8d8d',
     }}>
-      {saveStatus === 'saved' ? '● Saved'
+      {pendingSync ? `● Offline · ${pendingSync} waiting`
+        : saveStatus === 'saved' ? '● Saved'
         : saveStatus === 'saving' ? '● Saving…'
           : saveStatus === 'offline' ? '● Offline' : '● Save failed'}
     </span>
+  );
+
+  const SetCompletePrompt = () => {
+    if (!score?.set_complete || dismissedCompleteSet === score.current_set) return null;
+    const winner = score.set_winner === 'us' ? ourTeamName : opponentName;
+    const winnerSets = (score.set_winner === 'us' ? setsWon : setsLost) + 1;
+    return <div style={s.overlay}><div style={s.promptCard}>
+      <div style={s.promptTitle}>{winner} won Set {score.current_set}</div>
+      <div style={s.reviewScore}>{score.current_set_our} – {score.current_set_opponent}</div>
+      <div style={s.promptSub}>{winnerSets >= score.sets_needed ? 'This result completes the match.' : 'Record the set before continuing.'}</div>
+      <div style={{display:'flex',gap:10}}>
+        <button style={s.promptSkipBtn} onClick={() => setDismissedCompleteSet(score.current_set)}>Check / undo</button>
+        <button style={{...s.endMatchBtn, ...(pendingSync ? s.disabledBtn : {})}}
+          disabled={Boolean(pendingSync)}
+          onClick={winnerSets >= score.sets_needed ? handleComplete : handleEndSet}>
+          {pendingSync ? 'Sync first' : winnerSets >= score.sets_needed ? 'Review match' : 'End set'}
+        </button>
+      </div>
+    </div></div>;
+  };
+
+  const StatDefinitions = () => !showDefinitions ? null : (
+    <div style={s.overlay}><div style={{...s.promptCard, width: '440px', textAlign: 'left'}}>
+      <div style={s.promptTitle}>Stat definitions</div>
+      {Object.entries(EVENT_HELP).map(([type, help]) => (
+        <div key={type} style={s.definitionRow}>
+          <strong>{type.replaceAll('_', ' ')}</strong><span>{help}</span>
+        </div>
+      ))}
+      <div style={s.definitionRow}><strong>0–3 pass</strong><span>0 = ace/overpass, 1 = one option, 2 = two options, 3 = all attack options.</span></div>
+      <button style={{...s.endMatchBtn, width:'100%', marginTop:12}} onClick={() => setShowDefinitions(false)}>Close</button>
+    </div></div>
   );
 
   const MatchReview = () => !showMatchReview ? null : (
@@ -796,6 +928,11 @@ function LiveMatch() {
         <div style={s.promptSub}>
           Check the score and undo any incorrect action before completing. Completed matches feed the analytics pages.
         </div>
+        {audit && <div style={s.auditBox}>
+          <strong>Accuracy check</strong>
+          {audit.issues.length ? audit.issues.map(issue => <div key={issue}>⚠ {issue}</div>) : <div>✓ No consistency problems found</div>}
+          <small>{audit.checks.events} events · {audit.checks.kills} kills · {audit.checks.assists} assists</small>
+        </div>}
         <div style={{ display: 'flex', gap: '10px' }}>
           <button style={{ ...s.promptSkipBtn, flex: 1 }}
             onClick={() => setShowMatchReview(false)}>Go back</button>
@@ -837,6 +974,13 @@ function LiveMatch() {
       positions, bench, weAreServing, rotationNumber,
       passingEnabled, activeLiberoSwap, enabled,
     );
+  };
+
+  const toggleFastMode = () => {
+    setFastMode(value => {
+      localStorage.setItem('guvc-fast-mode', value ? 'off' : 'on');
+      return !value;
+    });
   };
 
   if (!score || !match) return <div style={s.loading}>Loading...</div>;
@@ -1080,6 +1224,8 @@ function LiveMatch() {
         <LiberoPrompt />
         <SpectatorQR />
         <AssistPrompt />
+        <StatDefinitions />
+        <SetCompletePrompt />
         <MatchReview />
         {actionError && <div role="alert" style={m.actionError}>{actionError}</div>}
 
@@ -1108,6 +1254,8 @@ function LiveMatch() {
               <button style={m.ptThem} onClick={() => handleEvent('opponent_point')}>+Them</button>
             </div>
             <SaveStatus />
+            <button style={m.modeToggle} onClick={toggleFastMode}>{fastMode ? 'FAST' : 'FULL'}</button>
+            <button style={m.modeToggle} onClick={() => setShowDefinitions(true)}>ⓘ STATS</button>
           </div>
           <div style={m.scoreTeamBlock}>
             <div style={m.scoreTeamName}>{opponentName}</div>
@@ -1330,8 +1478,9 @@ function LiveMatch() {
                 const isServeGroup = group.label === 'Serve';
                 const canUse = selectedPlayer &&
                   (!isServeGroup || selectedPlayer.id === serverPlayer?.id);
-                return group.events.map(ev => (
+                return group.events.filter(ev => !fastMode || FAST_EVENTS.has(ev.type)).map(ev => (
                   <button key={ev.type}
+                    title={EVENT_HELP[ev.type] || ''}
                     style={{
                       ...m.statBtn,
                       background: ev.color,
@@ -1363,7 +1512,7 @@ function LiveMatch() {
         <div style={m.bottomBar}>
           <button style={m.undoBtn} onClick={handleUndo}>↩{undoMsg}</button>
           <button style={m.undoBtn} onClick={() => setShowSpectatorQR(true)}>QR</button>
-          {(score?.current_set ?? 1) < 5 && <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>}
+          {(score?.current_set ?? 1) < (score?.best_of ?? 5) && <button style={m.endSetBtn} onClick={handleEndSet}>End Set</button>}
           <button style={m.endMatchBtn} onClick={handleComplete}>End Match</button>
         </div>
       </div>
@@ -1376,6 +1525,8 @@ function LiveMatch() {
       <LiberoPrompt />
       <SpectatorQR />
       <AssistPrompt />
+      <StatDefinitions />
+      <SetCompletePrompt />
       <MatchReview />
       {actionError && <div role="alert" style={s.trackingError}>{actionError}</div>}
 
@@ -1423,6 +1574,8 @@ function LiveMatch() {
       <div style={s.controls}>
         <button style={s.undoBtn} onClick={() => setShowSpectatorQR(true)}>Spectator QR</button>
         <button style={s.undoBtn} onClick={handleUndo}>↩ Undo</button>
+        <button style={s.undoBtn} onClick={toggleFastMode}>{fastMode ? 'Fast mode' : 'Full mode'}</button>
+        <button style={s.undoBtn} onClick={() => setShowDefinitions(true)}>ⓘ Stats</button>
         {undoMsg && <span style={s.undoMsg}>{undoMsg}</span>}
         <button style={s.rotationBtn} onClick={() => handleManualRotation('backward')}>← Rotation</button>
         <button style={s.rotationBtn} onClick={() => handleManualRotation('forward')}>Rotation →</button>
@@ -1433,7 +1586,7 @@ function LiveMatch() {
           disabled={(score?.current_set_opponent ?? 0) <= 0 || eventSaving}
           onClick={() => handleEvent('score_correction_them')}>−1 {opponentName}</button>
         <div style={{ flex:1 }} />
-        {(score?.current_set ?? 1) < 5 && <button style={s.endSetBtn} onClick={handleEndSet}>End Set</button>}
+        {(score?.current_set ?? 1) < (score?.best_of ?? 5) && <button style={s.endSetBtn} onClick={handleEndSet}>End Set</button>}
         <button style={s.endMatchBtn} onClick={handleComplete}>End Match</button>
       </div>
       <RecentActions />
@@ -1666,9 +1819,10 @@ function LiveMatch() {
                     <span style={s.serverOnlyHint}> — {serverPlayer.name} · attempts tracked automatically</span>}
                 </div>
                 <div style={{ ...s.eventGrid, ...(tabletLandscape ? s.tabletEventGrid : {}) }}>
-                  {group.events.map(ev => {
+                  {group.events.filter(ev => !fastMode || FAST_EVENTS.has(ev.type)).map(ev => {
                     const canUse = eventIsAvailable(ev.type);
                     return <button key={ev.type}
+                      title={EVENT_HELP[ev.type] || ''}
                       style={{
                         ...s.eventBtn,
                         ...(tabletLandscape ? s.tabletEventBtn : {}),
@@ -1759,6 +1913,9 @@ const s = {
   promptSkipBtn: { padding: '9px', background: 'transparent', color: '#666', border: '1px solid #333', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' },
   reviewScore: { display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '12px', alignItems: 'center', fontSize: '15px', margin: '18px 0' },
   reviewSets: { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '7px', marginBottom: '16px', color: '#ddd', fontSize: '12px' },
+  auditBox: { textAlign: 'left', padding: '10px', marginBottom: '14px', background: '#111120', border: '1px solid #33334a', borderRadius: '8px', color: '#ccc', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '5px' },
+  definitionRow: { display: 'grid', gridTemplateColumns: '110px 1fr', gap: '10px', padding: '7px 0', borderBottom: '1px solid #292929', color: '#bbb', fontSize: '12px', textTransform: 'capitalize' },
+  disabledBtn: { opacity: 0.45, cursor: 'not-allowed' },
   saveStatus: { fontSize: '9px', fontWeight: '800', marginTop: '2px' },
   recentBar: { display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', overflowX: 'auto', background: '#10101c', borderBottom: '1px solid #25253a', whiteSpace: 'nowrap' },
   recentTitle: { color: '#F5C800', fontSize: '9px', textTransform: 'uppercase', marginRight: '2px' },
@@ -1856,6 +2013,7 @@ const m = {
   scoreBig: { fontSize: '34px', fontWeight: '800', color: '#F5C800', lineHeight: 1 },
   scoreSets: { fontSize: '9px', color: '#888', marginTop: '1px' },
   scoreMid: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '120px' },
+  modeToggle: { padding: '3px 7px', color: '#111', background: '#F5C800', border: 0, borderRadius: '999px', fontSize: '8px', fontWeight: '900' },
   scoreSet: { fontSize: '12px', fontWeight: '700', color: '#ccc' },
   ptRow: { display: 'flex', gap: '5px', marginTop: '3px' },
   ptUs: { padding: '7px 12px', background: '#1f7a49', color: 'white', border: '1px solid #32a867', borderRadius: '7px', cursor: 'pointer', fontSize: '11px', fontWeight: '800' },
